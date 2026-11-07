@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Favicon Pitchtory">
+  <circle cx="32" cy="32" r="30" fill="#0a1710" stroke="#efbf4e" stroke-width="3"/>
+  <path d="M 32 12 l 2.6 5.3 5.8 0.8 -4.2 4.1 1 5.8 -5.2 -2.7 -5.2 2.7 1 -5.8 -4.2 -4.1 5.8 -0.8 z" fill="#efbf4e"/>
+  <g transform="translate(32 36)">
+    <circle r="15" fill="#e9f1eb"/>
+    <polygon points="0,-6 5.7,-1.9 3.5,4.8 -3.5,4.8 -5.7,-1.9" fill="#0a1710"/>
+    <line x1="0" y1="-6" x2="0" y2="-15" stroke="#0a1710" stroke-width="2"/>
+    <line x1="5.7" y1="-1.9" x2="14.3" y2="-4.7" stroke="#0a1710" stroke-width="2"/>
+    <line x1="3.5" y1="4.8" x2="9.2" y2="12.1" stroke="#0a1710" stroke-width="2"/>
+    <line x1="-3.5" y1="4.8" x2="-9.2" y2="12.1" stroke="#0a1710" stroke-width="2"/>
+    <line x1="-5.7" y1="-1.9" x2="-14.3" y2="-4.7" stroke="#0a1710" stroke-width="2"/>
+  </g>
+</svg>
