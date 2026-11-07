@@ -144,7 +144,10 @@ function Standings({ rows, userClubId }) {
 
 export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const { career, clubs, players, fixtures, load, refresh } = useCareer()
-  const [tab, setTab] = useState('home')
+  const [tab, setTab] = useState(() => {
+    const q = new URLSearchParams(window.location.search).get('tab')
+    return TABS.some((t) => t.id === q) ? q : 'home'
+  })
   const [matchFixture, setMatchFixture] = useState(null)
   const [seasonSummary, setSeasonSummary] = useState(null)
   const [cardPlayer, setCardPlayer] = useState(null)

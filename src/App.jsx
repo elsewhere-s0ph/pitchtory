@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import SetupScreen from './components/SetupScreen'
 import Dashboard from './components/Dashboard'
 import { listCareers } from './db'
+import PwaBanner from './components/PwaBanner'
 
 export default function App() {
   const [activeId, setActiveId] = useState(null)
@@ -24,14 +25,22 @@ export default function App() {
   if (!ready) return null
 
   if (showSetup || !activeId) {
-    return <SetupScreen onStart={(id) => { setActiveId(id); setShowSetup(false) }} />
+    return (
+      <>
+        <PwaBanner />
+        <SetupScreen onStart={(id) => { setActiveId(id); setShowSetup(false) }} />
+      </>
+    )
   }
 
   return (
-    <Dashboard
-      careerId={activeId}
-      onNewCareer={() => setShowSetup(true)}
-      onSwitchCareer={(id) => { setActiveId(id); setShowSetup(false) }}
-    />
+    <>
+      <PwaBanner />
+      <Dashboard
+        careerId={activeId}
+        onNewCareer={() => setShowSetup(true)}
+        onSwitchCareer={(id) => { setActiveId(id); setShowSetup(false) }}
+      />
+    </>
   )
 }
