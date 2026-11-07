@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, bestXI, subImpact } from '../game/engine'
@@ -257,7 +258,9 @@ export default function MatchScreen({ fixture, onDone }) {
       { minute: m, type: 'sub', sub: true, text: 'Cambio: esce ' + pickOut.name + ', entra ' + pickIn.name },
     ]
     const impact = subImpact(match.seedNumber, pickIn, m, userSquad)
-    if (impact) evs.push({ ...impact, sub: true })
+    // side: senza questo campo il gol del fresco restava solo in cronaca,
+    // invisibile a punteggio, classifica e statistiche del marcatore.
+    if (impact) evs.push({ ...impact, side: userSide, sub: true })
     setSubEvents((s) => [...s, ...evs])
     setPickOut(null)
     setPickIn(null)
