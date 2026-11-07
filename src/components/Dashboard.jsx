@@ -1,7 +1,8 @@
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
-import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, SCOUT_UPGRADE_COST } from '../db'
+import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
 import { scoutedPotential, scoutError } from '../game/scouting'
 import { computeStandings } from '../game/standings'
 import { LEAGUES } from '../game/universe'
@@ -34,11 +35,13 @@ function MoraleDot({ value }) {
   return <span className={'inline-block h-2.5 w-2.5 rounded-full ' + color} title={'Morale ' + value} />
 }
 
-/** Colonne a larghezza fissa: ogni riga allineata con le altre. */
+/** Su due righe al telefono (il nome si legge per intero), su una
+ * riga al desktop: le statistiche respirano dove c'è spazio. */
 function PlayerRow({ p, season, round, onOpen }) {
   const injured = p.injuredUntil && round <= p.injuredUntil
+  const banned = p.bannedUntil && round <= p.bannedUntil
   return (
-    <li className="flex items-center gap-2 px-3 py-2 text-sm">
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-sm">
       <span className="w-7 shrink-0 text-center font-bold text-teal-400">{p.ovr}</span>
       <button
         onClick={() => onOpen(p)}
@@ -50,23 +53,28 @@ function PlayerRow({ p, season, round, onOpen }) {
           <span className="ml-1 text-amber-400" title="Ha almeno un abilità speciale: apri la scheda">✦</span>
         )}
       </button>
-      <span className="flex w-14 shrink-0 items-center justify-end gap-1.5">
-        <MoraleDot value={p.morale} />
-        <span className="text-xs text-slate-400">{p.morale}</span>
-      </span>
-      <span className="w-7 shrink-0 text-right text-xs text-slate-400" title="Presenze">{p.apps || 0}</span>
-      <span className="w-6 shrink-0 text-right text-xs text-slate-400" title="Gol">{p.goals || 0}</span>
-      <span className="hidden w-24 shrink-0 truncate text-xs text-slate-400 sm:block">{p.personality}</span>
-      <span className="w-8 shrink-0 text-right text-xs text-slate-400">{p.age}a</span>
-      <span className="w-16 shrink-0 text-right text-xs text-slate-400">{fmtMoney(p.value)}</span>
       <span className="w-12 shrink-0 text-right">
-        {injured ? (
-          <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] text-red-400" title={'Fuori fino alla giornata ' + p.injuredUntil}>
+        {banned ? (
+          <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] text-red-400" title={"Squalificato fino alla giornata " + p.bannedUntil}>
+            Squal.
+          </span>
+        ) : injured ? (
+          <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] text-red-400" title={"Fuori fino alla giornata " + p.injuredUntil}>
             Infort.
           </span>
         ) : p.contractUntil <= season + 1 ? (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-400">Scade</span>
         ) : null}
+      </span>
+      <span className="flex w-full items-center justify-between gap-3 pt-0.5 text-[11px] text-slate-400 sm:w-auto sm:justify-end sm:gap-2">
+        <span className="flex items-center gap-1" title="Morale"><MoraleDot value={p.morale} />{p.morale}</span>
+        <span title="Presenze e gol">{p.apps || 0} PG · {p.goals || 0} G</span>
+        {p.cards ? (
+          <span className="text-amber-400" title="Ammonizioni: alla quinta salta una giornata">{p.cards}⚠</span>
+        ) : null}
+        <span className="hidden sm:inline" title="Carattere">{p.personality}</span>
+        <span title="Età">{p.age}a</span>
+        <span title="Valore di mercato">{fmtMoney(p.value)}</span>
       </span>
     </li>
   )
@@ -191,6 +199,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const next = userFixtures.find((f) => !f.played)
   const round = next ? next.number : 39
   const injuredCount = squad.filter((p) => p.injuredUntil && round <= p.injuredUntil).length
+  const bannedCount = squad.filter((p) => p.bannedUntil && round <= p.bannedUntil).length
   const scouts = career.scouts || { level: 1, focus: null }
   const youthRanked = youth
     .slice()
@@ -205,7 +214,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   function fitPlayersFor(md) {
     const m = {}
     for (const [cid, list] of Object.entries(playersByClub)) {
-      m[cid] = list.filter((p) => !(p.injuredUntil && md <= p.injuredUntil))
+      m[cid] = list.filter((p) => !(p.injuredUntil && md <= p.injuredUntil) && !(p.bannedUntil && md <= p.bannedUntil))
     }
     return m
   }
@@ -214,6 +223,17 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
     const fixture = matchFixture
     if (!fixture) return
     try {
+      const isCup = fixture.type === "cup"
+      // La Coppa non ammette pari: servono i rigori, subito.
+      let finalResult = result
+      let cupWinnerId = undefined
+      if (isCup && result.homeGoals === result.awayGoals) {
+        const pens = cupShootout(career, fixture, clubById[fixture.homeId], clubById[fixture.awayId], playersByClub)
+        cupWinnerId = pens.winnerId
+        finalResult = { ...result, cupWinnerId, events: [...result.events, pens.event] }
+      } else if (isCup) {
+        cupWinnerId = result.homeGoals > result.awayGoals ? fixture.homeId : fixture.awayId
+      }
       const others = fixtures.filter((f) => f.number === fixture.number && f.key !== fixture.key && !f.played)
       const simResults = others.map((f) => {
         const sim = simulateMatch(
@@ -222,14 +242,22 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
           fitPlayersFor(f.number),
           matchSeed(career.seed, f.key + '#' + career.season),
         )
-        return { f, sim }
+        const tie = sim.homeGoals === sim.awayGoals
+        const winnerId = f.type === "cup"
+          ? tie
+            ? cupShootout(career, f, clubById[f.homeId], clubById[f.awayId], fitPlayersFor(f.number)).winnerId
+            : sim.homeGoals > sim.awayGoals ? f.homeId : f.awayId
+          : null
+        return { f, sim, winnerId }
       })
       await saveFixtureResults([
-        { key: fixture.key, homeGoals: result.homeGoals, awayGoals: result.awayGoals },
-        ...simResults.map((r) => ({ key: r.f.key, homeGoals: r.sim.homeGoals, awayGoals: r.sim.awayGoals })),
+        { key: fixture.key, homeGoals: result.homeGoals, awayGoals: result.awayGoals, winnerId: cupWinnerId !== undefined ? cupWinnerId : null },
+        ...simResults.map((r) => ({ key: r.f.key, homeGoals: r.sim.homeGoals, awayGoals: r.sim.awayGoals, winnerId: r.winnerId })),
       ])
-      await applyPostMatch(career.id, fixture, result, userClub.id, squad, players)
+      await applyPostMatch(career.id, fixture, finalResult, userClub.id, squad, players)
       for (const r of simResults) await applyAiMatchday(r.f, r.sim.events, players)
+      // Coppa: turno chiuso, si sorteggiano le coppie successive.
+      if (isCup) await createNextCupRound(career.id)
       setMatchFixture(null)
       await load(career.id)
     } catch (err) {
@@ -314,7 +342,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               <Card title="Prossima partita">
                 {next ? (
                   <div className="text-sm">
-                    <p className="text-teal-400">Giornata {next.number}</p>
+                    <p className="text-teal-400">{next.type === "cup" ? CUP_NAME + " · " + (CUP_ROUNDS[next.round] || "Turno " + next.round) : "Giornata " + next.number}</p>
                     <p className="mt-1">
                       {next.homeId === userClub.id
                         ? 'In casa contro ' + clubById[next.awayId].name
@@ -345,6 +373,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                   <li>Media squadra: <b>{userClub.avgOvr}</b></li>
                   <li>Morale rosa: <b>{avgMorale}</b></li>
                   <li>Infortunati: <b className={injuredCount ? 'text-red-400' : ''}>{injuredCount}</b></li>
+                  <li>Squalificati: <b className={bannedCount ? 'text-red-400' : ''}>{bannedCount}</b></li>
                   <li>Budget: <b>{fmtMoney(userClub.budget)}</b></li>
                   <li>Stipendi: <b>{fmtMoney(wageBill)}</b></li>
                 </ul>
@@ -392,7 +421,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               const opp = clubById[home ? f.awayId : f.homeId].name
               return (
                 <li key={f.number} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <span className="w-10 text-xs text-slate-500">G{f.number}</span>
+                  <span className="w-10 text-xs text-slate-500" title={f.type === "cup" ? (CUP_ROUNDS[f.round] || "Turno " + f.round) : ""}>{f.type === "cup" ? "Coppa" : "G" + f.number}</span>
                   <span className="flex-1">{(home ? 'vs ' : '@ ') + opp}</span>
                   {f.played ? (
                     <span className="w-12 text-right font-bold tabular-nums">
@@ -564,6 +593,12 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                   <h2 className="text-2xl font-bold">Campione: {seasonSummary.champion}</h2>
                   <p className="text-sm text-slate-400">{seasonSummary.userPosition}° posto per il {userClub.name}.</p>
                 </>
+              )}
+              {seasonSummary.cupWinner && (
+                <p className="text-xs text-slate-400">
+                  {CUP_NAME}: <b className={seasonSummary.userCupWinner ? "text-flood-300" : ""}>{seasonSummary.cupWinner}</b>
+                  {seasonSummary.userCupWinner ? " — la porti a casa tu! 🏆" : ""}
+                </p>
               )}
             </div>
             {(seasonSummary.userPromoted || seasonSummary.userRelegated) && (
