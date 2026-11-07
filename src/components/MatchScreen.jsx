@@ -1,9 +1,11 @@
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, bestXI, subImpact } from '../game/engine'
 import { Rng } from '../lib/rng'
 import { hasAbility } from '../game/abilities'
+import { LEAGUES } from '../game/universe'
 
 /** Millisecondi per minuto simulato, per durata partita configurata. */
 const MS_PER_MINUTE = { short: 800, normal: 3500, long: 4700 }
@@ -296,7 +298,7 @@ export default function MatchScreen({ fixture, onDone }) {
     <div className="fixed inset-0 z-10 overflow-y-auto bg-pitch-950">
       <div className="mx-auto max-w-2xl p-4 pb-10 sm:p-8">
         <p className="scoreboard text-center text-[10px] tracking-[0.35em] text-flood-400">
-          Divisione d'Onore · Giornata {fixture.number}
+          {(LEAGUES.find((l) => l.id === ((clubById[fixture.homeId] || {}).leagueId)) || LEAGUES[0]).name} · Giornata {fixture.number}
         </p>
 
         {phase === 'pre' && (

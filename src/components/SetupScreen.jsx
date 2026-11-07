@@ -1,5 +1,6 @@
+
 import { useState } from 'react'
-import { generateUniverse } from '../game/universe'
+import { generateUniverse, LEAGUES } from '../game/universe'
 import { createCareer } from '../db'
 import { newSeed, seedFromString } from '../lib/rng'
 
@@ -17,6 +18,7 @@ export default function SetupScreen({ onStart }) {
   const [universe, setUniverse] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [leagueId, setLeagueId] = useState(LEAGUES[0].id)
 
   function generate() {
     const s = seedText.trim() ? seedFromString(seedText.trim()) : newSeed()
@@ -89,13 +91,25 @@ export default function SetupScreen({ onStart }) {
       ) : (
         <>
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Scegli il tuo club · Divisione d'Onore {universe.season}</h2>
+            <h2 className="text-lg font-semibold">Scegli il tuo club · {universe.season}</h2>
             <button onClick={() => setUniverse(null)} className="text-xs text-slate-400 hover:text-slate-200">
               Cambia seed
             </button>
           </div>
+          <div className="mb-4 flex gap-2">
+            {LEAGUES.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => { setLeagueId(l.id); setSelectedId(null) }}
+                className={'flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ' + (leagueId === l.id ? 'border-teal-500 bg-teal-500/10 text-teal-300' : 'border-slate-700 text-slate-400 hover:border-teal-500/60 hover:text-slate-200')}
+              >
+                {l.name}
+                <span className="ml-1 font-normal text-slate-500">{l.tier === 1 ? '· massima serie' : '· serie cadetta'}</span>
+              </button>
+            ))}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {universe.clubs.map((c) => (
+            {universe.clubs.filter((c) => c.leagueId === leagueId).map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelectedId(c.id)}
