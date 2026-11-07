@@ -1,5 +1,6 @@
+
 import Dexie from 'dexie'
-import { generateUniverse, playerValue } from './game/universe'
+import { generateUniverse, playerValue, LEAGUES } from './game/universe'
 import { generateSchedule } from './game/schedule'
 import { computeStandings } from './game/standings'
 import { seasonGrowth } from './game/progression'
@@ -25,10 +26,43 @@ db.version(1).stores({
   fixtures: 'key, careerId',
 })
 
+/** Versione dell'universo (G1: la Piramide). Le carriere nate prima hanno
+ * una lega sola: non sono compatibili, si riparte da zero. */
+export const UNIVERSE_VERSION = 2
+
+/** Sale per il calendario di ogni lega: stessa carriera, stesse sorti. */
+const LEAGUE_SCHED_SALT = { c: 0, a: 0x1eaf }
+
+/** Calendari di tutte le leghe: una riga per partita, chiave unica per lega. */
+function buildLeagueFixtures(careerId, clubs, scheduleSeed) {
+  const rows = []
+  for (const league of LEAGUES) {
+    const ids = clubs.filter((c) => c.leagueId === league.id).map((c) => c.id)
+    if (ids.length < 2) continue
+    const schedule = generateSchedule(ids, new Rng((scheduleSeed ^ (LEAGUE_SCHED_SALT[league.id] || 0)) >>> 0))
+    for (const md of schedule) {
+      md.matches.forEach((m, i) => {
+        rows.push({
+          key: careerId + ':' + league.id + 'g' + md.number + 'm' + i,
+          careerId,
+          leagueId: league.id,
+          number: md.number,
+          leg: md.leg,
+          homeId: m.homeId,
+          awayId: m.awayId,
+          played: false,
+          homeGoals: null,
+          awayGoals: null,
+        })
+      })
+    }
+  }
+  return rows
+}
+
 /** Crea una carriera: universo + calendario + morale, tutto deterministico dal seed. */
 export async function createCareer({ seed, seedText, coachName, clubId, matchDuration = 'normal' }) {
   const universe = generateUniverse(seed)
-  const schedule = generateSchedule(universe.clubs.map((c) => c.id), new Rng((seed ^ 0x5ced) >>> 0))
   const moraleRng = new Rng((seed ^ 0x4b1d) >>> 0)
 
   const careerId = await db.careers.add({
@@ -38,6 +72,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     clubId,
     season: universe.season,
     settings: { matchDuration },
+    universeVersion: UNIVERSE_VERSION,
     scouts: { level: 1, focus: null },
     trophies: [],
     createdAt: new Date().toISOString(),
@@ -56,19 +91,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
       injuredUntil: null,
       ...p,
     })))
-    await db.fixtures.bulkAdd(schedule.flatMap((md) =>
-      md.matches.map((m, i) => ({
-        key: careerId + ':g' + md.number + 'm' + i,
-        careerId,
-        number: md.number,
-        leg: md.leg,
-        homeId: m.homeId,
-        awayId: m.awayId,
-        played: false,
-        homeGoals: null,
-        awayGoals: null,
-      })),
-    ))
+    await db.fixtures.bulkAdd(buildLeagueFixtures(careerId, universe.clubs, (seed ^ 0x5ced) >>> 0))
   })
 
   return careerId
@@ -82,6 +105,9 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
  */
 export async function loadCareer(id) {
   const career = await db.careers.get(id)
+  if (career && career.universeVersion !== UNIVERSE_VERSION) {
+    throw new Error('Carriera nata prima della Piramide (G1): il suo universo aveva una lega sola. Creane una nuova.')
+  }
   const [clubs, players, fixtures] = await Promise.all([
     db.clubs.where('careerId').equals(id).toArray(),
     db.players.where('careerId').equals(id).toArray(),
@@ -131,7 +157,15 @@ export async function loadCareer(id) {
 }
 
 export async function listCareers() {
-  return db.careers.orderBy('createdAt').reverse().toArray()
+  const all = await db.careers.orderBy('createdAt').reverse().toArray()
+  // La Piramide non riporta indietro le carriere pre-G1: si riparte da zero
+  // (con il benestare del mister, che le usava solo per le prove).
+  const stale = all.filter((c) => c.universeVersion !== UNIVERSE_VERSION)
+  if (stale.length) {
+    for (const c of stale) await deleteCareer(c.id)
+    return all.filter((c) => c.universeVersion === UNIVERSE_VERSION)
+  }
+  return all
 }
 
 export async function updateCareerSettings(id, settings) {
@@ -273,15 +307,27 @@ export async function setScoutFocus(careerId, focus) {
  */
 export async function endSeason(careerId) {
   const { career, clubs, players, fixtures } = await loadCareer(careerId)
-  const standings = computeStandings(clubs, fixtures)
-  const champion = standings[0]
   const clubById = Object.fromEntries(clubs.map((c) => [c.id, c]))
+
+  // Classifica per lega (G1): il titolo è della tua serie, la Piramide
+  // però guarda tutte.
+  const standingsByLeague = {}
+  for (const l of LEAGUES) standingsByLeague[l.id] = computeStandings(clubs, fixtures, l.id)
+  const userClubRow = clubById[career.clubId]
+  const userLeague = LEAGUES.find((l) => l.id === (userClubRow && userClubRow.leagueId)) || LEAGUES[0]
+  const standings = standingsByLeague[userLeague.id]
+  const champion = standings[0]
 
   const summary = {
     season: career.season,
+    userLeagueName: userLeague.name,
     champion: champion.name,
     userPosition: standings.findIndex((r) => r.clubId === career.clubId) + 1,
     userChampion: champion.clubId === career.clubId,
+    promoted: [],
+    relegated: [],
+    userPromoted: false,
+    userRelegated: false,
     progressed: [],
     declined: [],
   }
@@ -370,29 +416,59 @@ export async function endSeason(careerId) {
       if (c.key) await db.clubs.update(c.key, { avgOvr: avg })
     }
 
+    // La Piramide (G1): due su dalla cadetta, due giù dalla massima. I club
+    // cambiano serie e i soldi li seguono — in una direzione o nell'altra.
+    const topLeague = LEAGUES[0]
+    const bottomLeague = LEAGUES[1]
+    const relegatedRows = (standingsByLeague[topLeague.id] || []).slice(-2)
+    const promotedRows = (standingsByLeague[bottomLeague.id] || []).slice(0, 2)
+    const swapRng = new Rng(seedFromString(baseSeed + 'promotions'))
+    for (const row of promotedRows) {
+      const c = clubById[row.clubId]
+      if (!c) continue
+      c.leagueId = topLeague.id
+      const budget = (budgets[row.clubId] || 0) + swapRng.int(6, 12) * 1e6
+      budgets[row.clubId] = budget
+      summary.promoted.push(c.name)
+      if (row.clubId === career.clubId) summary.userPromoted = true
+      if (c.key) {
+        await db.clubs.update(c.key, {
+          leagueId: topLeague.id,
+          reputation: clamp(c.reputation + 6, 30, 95),
+          budget,
+        })
+      }
+    }
+    for (const row of relegatedRows) {
+      const c = clubById[row.clubId]
+      if (!c) continue
+      c.leagueId = bottomLeague.id
+      const budget = Math.max(500000, Math.round((budgets[row.clubId] || 0) * 0.7))
+      budgets[row.clubId] = budget
+      summary.relegated.push(c.name)
+      if (row.clubId === career.clubId) summary.userRelegated = true
+      if (c.key) {
+        await db.clubs.update(c.key, {
+          leagueId: bottomLeague.id,
+          reputation: clamp(c.reputation - 6, 30, 95),
+          budget,
+        })
+      }
+    }
+
     await db.careers.update(careerId, {
       season: career.season + 1,
       trophies: [
         ...(career.trophies || []),
-        { season: career.season, competition: "Divisione d'Onore", championId: champion.clubId, championName: champion.name },
+        ...LEAGUES.map((l) => {
+          const ch = standingsByLeague[l.id][0]
+          return { season: career.season, competition: l.name, championId: ch.clubId, championName: ch.name }
+        }),
       ],
     })
 
     await db.fixtures.where('careerId').equals(careerId).delete()
-    const schedule = generateSchedule(clubs.map((c) => c.id), new Rng((career.seed ^ (0x5ced + career.season)) >>> 0))
-    await db.fixtures.bulkAdd(schedule.flatMap((md) =>
-      md.matches.map((m, i) => ({
-        key: careerId + ':g' + md.number + 'm' + i,
-        careerId,
-        number: md.number,
-        leg: md.leg,
-        homeId: m.homeId,
-        awayId: m.awayId,
-        played: false,
-        homeGoals: null,
-        awayGoals: null,
-      })),
-    ))
+    await db.fixtures.bulkAdd(buildLeagueFixtures(careerId, clubs, (career.seed ^ (0x5ced + career.season)) >>> 0))
   })
 
   const weight = (x) => Math.abs(x.to - x.from)
