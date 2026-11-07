@@ -2,7 +2,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: Fase 5 completa + restyle «Notte di Divisione d'Onore» (v0.12.0) — motore partite, QTE, sostituzioni, infortuni, attributi 1-20, schede giocatore, fine stagione, mercato, abilità speciali, osservatorio e identità visiva dedicata con logo kit. Prossima: F6 standard PWA completo.
+> Stato: Fase 6 completa (v0.13.0) — motore partite, QTE, sostituzioni, infortuni, attributi 1-20, schede giocatore, fine stagione, mercato, abilità speciali, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa: manifest, service worker con aggiornamento controllato, header di sicurezza, installazione. Prossima: F7 Capacitor.
 
 ## Sviluppo
 
@@ -59,6 +59,18 @@ Un match serale sotto i riflettori, in un campetto che nessuno conosce. Identit�
 - **Motion**: `goal-flash` (bagliore oro sul tabellino a ogni gol e sul punteggio finale), `slide-in` per gli eventi della cronaca, `fade-up` per card e pannelli, `urgent` per gli ultimi 3 secondi dei QTE e il caricamento. Tutto disattivato con `prefers-reduced-motion`.
 - **Strategy**: la scala `pitch` è stata ridefinita per intero e `slate`/`teal`/`amber` rimappati sui nuovi toni — l'intera app ha cambiato pelle senza riscrivere una riga di logica.
 - **Logo kit**: crest tondo (PITCHTORY su arco, EST. 2026, stella oro, palla gesso), variante monocroma, wordmark, icona maskable e favicon in `src/assets/`; anteprima ed export PNG da `logokit.html` con `npm run dev` + `/logokit.html`. Le PNG si caricano a mano nel repo: il push binario via API corrompe le immagini.
+## PWA (F6)
+
+Pitchtory è una PWA completa secondo lo standard Little Elsewhere:
+
+- **Manifest**: `id` e `start_url`/`scope` relativi (multi-hosting GitHub Pages + Cloudflare), icone PNG 192/512 `any` **e** maskable separate + SVG, `shortcuts` (Rosa e Mercato, gestiti via `?tab=`), `screenshots` wide 1280×720 e narrow 540×960, `lang: it`.
+- **Service worker**: precache resiliente (una risorsa essenziale sola: la shell; tutto il resto fallisce in silenzio), navigazioni network-first con fallback alla shell offline, asset con hash cache-first, evizione delle cache vecchie in `activate`. Il nome cache porta un **timbro di build automatico** (`__SW_BUILD__` sostituito da un plugin Vite a ogni `npm run build`): mai bump manuali.
+- **Aggiornamento controllato**: quando arriva una versione nuova, un banner propone «Aggiorna» — mai `skipWaiting` silenzioso. La registrazione avviene solo in build, mai in dev.
+- **Installazione**: `beforeinstallprompt` + pulsante «Installa», istruzioni iOS/iPadOS (`maxTouchPoints > 1` compreso) mostrate una volta sola, `apple-touch-icon` e metadati apple-web-app, prompt nascosto se già standalone.
+- **Sicurezza** (`_headers`, Cloudflare Pages): CSP in **Report-Only** da validare su deploy di test prima di attivarla (nessuna risorsa esterna: tutto `self` + `data:` per la grana), HSTS 2 anni con preload, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, asset hashati immutabili, `sw.js` mai in cache.
+- **Social**: `og:image` 1200×630 con `og:image:alt`, `twitter:card summary_large_image`, JSON-LD `SoftwareApplication` (offers price 0, niente rating auto-attribuito). L'app è l'unica pagina del prodotto: indicizzata, senza cannibalizzazione.
+- **PNG a mano**: il push binario via API corrompe le immagini, quindi icone PNG (192/512 any + maskable, apple-touch 180) ed `og.png` si esportano da `logokit.html` e si caricano via web in `public/icons/` e `public/`; gli screenshot veri della app (1280×720 e 540×960) vanno in `public/screenshots/`.
+- **Lingua**: il gioco è pensato in italiano (lega fittizia, tono ironico): manifest e contenuti in IT, niente toggle EN.
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -86,7 +98,7 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 - [x] F4 — Mercato: finestre estiva e invernale, trattative con controfferta, offerte AI, la lega che commercia
 - [x] F5 — Abilità Speciali e osservatori
 - [x] F5.5 — Restyle grafico: identità «Notte di Divisione d'Onore» + logo kit
-- [ ] F6 — PWA completa (manifest, service worker, _headers, bilingue)
+- [x] F6 — PWA completa (manifest, service worker con banner Aggiorna, _headers, installazione Android + iOS)
 - [ ] F7 — Capacitor (app vera)
 
 ## Deploy
