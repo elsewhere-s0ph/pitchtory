@@ -1,8 +1,10 @@
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, SCOUT_UPGRADE_COST } from '../db'
 import { scoutedPotential, scoutError } from '../game/scouting'
 import { computeStandings } from '../game/standings'
+import { LEAGUES } from '../game/universe'
 import { simulateMatch, matchSeed } from '../game/engine'
 import MatchScreen from './MatchScreen'
 import PlayerCard from './PlayerCard'
@@ -151,6 +153,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const [matchFixture, setMatchFixture] = useState(null)
   const [seasonSummary, setSeasonSummary] = useState(null)
   const [cardPlayer, setCardPlayer] = useState(null)
+  const [standingsLeague, setStandingsLeague] = useState(null)
 
   useEffect(() => {
     load(careerId)
@@ -166,8 +169,9 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
       .sort((a, b) => a.number - b.number)
     const playersByClub = {}
     for (const p of players) (playersByClub[p.clubId] = playersByClub[p.clubId] || []).push(p)
-    const standings = computeStandings(clubs, fixtures)
-    return { clubById, userClub, squad, userFixtures, playersByClub, standings }
+    const standingsByLeague = {}
+    for (const l of LEAGUES) standingsByLeague[l.id] = computeStandings(clubs, fixtures, l.id)
+    return { clubById, userClub, squad, userFixtures, playersByClub, standingsByLeague }
   }, [career, clubs, players, fixtures])
 
   if (!career || !data) {
@@ -179,7 +183,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
     )
   }
 
-  const { clubById, userClub, squad, userFixtures, playersByClub, standings } = data
+  const { clubById, userClub, squad, userFixtures, playersByClub, standingsByLeague } = data
   const seniors = squad.filter((p) => !p.youth)
   const youth = squad.filter((p) => p.youth)
   const avgMorale = squad.length ? Math.round(squad.reduce((s, p) => s + p.morale, 0) / squad.length) : 0
@@ -191,7 +195,11 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const youthRanked = youth
     .slice()
     .sort((a, b) => scoutedPotential(b, scouts) - scoutedPotential(a, scouts))
-  const position = standings.findIndex((r) => r.clubId === userClub.id) + 1
+  const userLeagueId = userClub.leagueId || LEAGUES[0].id
+  const userLeagueName = (LEAGUES.find((l) => l.id === userLeagueId) || LEAGUES[0]).name
+  const userStandings = standingsByLeague[userLeagueId] || []
+  const standings = standingsByLeague[standingsLeague || userLeagueId] || []
+  const position = userStandings.findIndex((r) => r.clubId === userClub.id) + 1
 
   /** Solo i giocatori sani per la giornata indicata. */
   function fitPlayersFor(md) {
@@ -289,7 +297,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
             <p className="scoreboard text-[10px] tracking-[0.35em] text-flood-400">Pitchtory · Build your own legacy</p>
             <h1 className="scoreboard mt-1 text-2xl font-semibold">{userClub.name}</h1>
             <p className="text-xs text-slate-400">
-              Divisione d'Onore · Stagione {career.season} · {career.coachName}
+              {userLeagueName} · Stagione {career.season} · {career.coachName}
             </p>
           </div>
           <span className="flex shrink-0 gap-1">
@@ -333,7 +341,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               </Card>
               <Card title="Situazione">
                 <ul className="space-y-1 text-sm text-slate-300">
-                  <li>Posizione: <b>{position ? position + '° su ' + standings.length : '—'}</b></li>
+                  <li>Posizione: <b>{position ? position + '° su ' + userStandings.length : '—'}</b></li>
                   <li>Media squadra: <b>{userClub.avgOvr}</b></li>
                   <li>Morale rosa: <b>{avgMorale}</b></li>
                   <li>Infortunati: <b className={injuredCount ? 'text-red-400' : ''}>{injuredCount}</b></li>
@@ -343,6 +351,17 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               </Card>
             </div>
             <h3 className="mb-2 mt-6 text-sm font-semibold">Classifica</h3>
+            <div className="mb-2 flex gap-2">
+              {LEAGUES.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => setStandingsLeague(l.id)}
+                  className={'flex-1 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ' + ((standingsLeague || userLeagueId) === l.id ? 'border-teal-500 bg-teal-500/10 text-teal-300' : 'border-slate-700 text-slate-400 hover:border-teal-500/60 hover:text-slate-200')}
+                >
+                  {l.name}
+                </button>
+              ))}
+            </div>
             <Standings rows={standings} userClubId={userClub.id} />
           </>
         )}
@@ -538,7 +557,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               {seasonSummary.userChampion ? (
                 <>
                   <h2 className="scoreboard animate-goal-flash inline-block rounded-lg px-3 text-2xl font-bold text-flood-300">Campioni! 🏆</h2>
-                  <p className="text-sm text-slate-400">{userClub.name} vince la Divisione d'Onore.</p>
+                  <p className="text-sm text-slate-400">{userClub.name} alza il trofeo: {seasonSummary.userLeagueName}.</p>
                 </>
               ) : (
                 <>
@@ -547,6 +566,23 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                 </>
               )}
             </div>
+            {(seasonSummary.userPromoted || seasonSummary.userRelegated) && (
+              <div className={'rounded-xl border p-4 text-center ' + (seasonSummary.userPromoted ? 'border-teal-500/50 bg-teal-500/10' : 'border-red-500/50 bg-red-500/10')}>
+                <h2 className="scoreboard text-xl font-bold">{seasonSummary.userPromoted ? 'PROMOZIONE! 🎉' : 'Retrocessione.'}</h2>
+                <p className="mt-1 text-xs text-slate-400">
+                  {seasonSummary.userPromoted
+                    ? userClub.name + ' sale in ' + LEAGUES[0].name + '. I grandi li aspettano al varco.'
+                    : userClub.name + ' scende in ' + LEAGUES[1].name + '. Si riparte da qui, mister.'}
+                </p>
+              </div>
+            )}
+            {((seasonSummary.promoted && seasonSummary.promoted.length) || (seasonSummary.relegated && seasonSummary.relegated.length)) ? (
+              <div className="rounded-xl border border-slate-800 bg-pitch-900/40 p-4">
+                <h3 className="mb-2 text-sm font-semibold text-flood-400">La Piramide si muove</h3>
+                <p className="text-sm text-teal-300">Promossi: {(seasonSummary.promoted || []).join(' · ')}</p>
+                <p className="mt-1 text-sm text-red-300">Retrocessi: {(seasonSummary.relegated || []).join(' · ')}</p>
+              </div>
+            ) : null}
             <div className="rounded-xl border border-slate-800 bg-pitch-900/40 p-4">
               <h3 className="mb-2 text-sm font-semibold text-teal-400">Chi è cresciuto</h3>
               <ul className="space-y-1 text-sm">
