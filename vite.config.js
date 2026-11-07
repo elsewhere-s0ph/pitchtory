@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Nota deploy: se un giorno servisse GitHub Pages, aggiungere base: '/football-eleven/'.
+// Nota deploy: se un giorno servisse GitHub Pages, aggiungere base: '/pitchtory/'.
 // Per Cloudflare Pages la root va bene così.
 
 /** Timbro di build nel service worker: il nome cache cambia a ogni build,
