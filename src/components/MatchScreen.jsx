@@ -1,5 +1,6 @@
 
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, bestXI, subImpact } from '../game/engine'
@@ -68,7 +69,9 @@ export default function MatchScreen({ fixture, onDone }) {
   const fitPlayersByClub = useMemo(() => {
     const m = {}
     for (const [cid, list] of Object.entries(playersByClub)) {
-      m[cid] = list.filter((p) => !(p.injuredUntil && fixture.number <= p.injuredUntil))
+      m[cid] = list.filter(
+        (p) => !(p.injuredUntil && fixture.number <= p.injuredUntil) && !(p.bannedUntil && fixture.number <= p.bannedUntil),
+      )
     }
     return m
   }, [playersByClub, fixture])
@@ -133,7 +136,7 @@ export default function MatchScreen({ fixture, onDone }) {
         const ev = { minute: m.minute, text: outcome.text, qte: true }
         if (outcome.goal) return { ...ev, side: userSide, type: 'goal', playerId: outcome.playerId }
         if (outcome.goalAgainst) return { ...ev, side: oppSide, type: 'goal', playerId: outcome.playerId }
-        if (outcome.card) return { ...ev, side: userSide, type: 'card' }
+        if (outcome.card) return { ...ev, side: userSide, type: 'card', playerId: outcome.playerId }
         return { ...ev, side: userSide, type: 'chance' }
       })
   }, [match, resolved])

@@ -1,3 +1,4 @@
+
 /**
  * Motore partita (F3). I gol seguono una distribuzione di Poisson guidata
  * dalla differenza di forza tra le squadre (miglior XI + morale + fattore casa).
@@ -505,6 +506,7 @@ function makeMoment(rng, kind, minute, idx, seedNumber, userClub, oppClub, userS
               goal: 0,
               goalAgainst: 0,
               card,
+              playerId: defender.id,
               text: card
                 ? 'Fallo tattico di ' + defender.name + ': ammonito! Ma il contropiede muore lì'
                 : 'Fallo tattico di ' + defender.name + ': contropiede annientato, solo un colpo di fischietto',
