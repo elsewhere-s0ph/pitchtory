@@ -1,0 +1,17 @@
+# Header di sicurezza — Cloudflare Pages. CSP in Report-Only: si attiva dopo
+# una build verificata su deploy di test (standard studio).
+/*
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; media-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
+
+# Asset con hash: immutabili per un anno.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Il service worker non si cache mai.
+/sw.js
+  Cache-Control: no-cache

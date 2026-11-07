@@ -54,35 +54,44 @@
         <img src="/src/assets/favicon.svg" alt="Favicon" width="72" />
         <div><button data-src="/src/assets/favicon.svg" data-size="64">PNG 64</button><button data-src="/src/assets/favicon.svg" data-size="32">PNG 32</button></div>
       </div>
+      <div class="card">
+        <h2>SOCIAL OG 1200×630</h2>
+        <img src="/src/assets/og.svg" alt="Immagine social" width="300" style="border-radius:12px" />
+        <div><button data-src="/src/assets/og.svg" data-w="1200" data-h="630">PNG 1200×630</button></div>
+      </div>
       <div class="card light">
         <h2>CREST SU CHIARO</h2>
         <div class="mono" style="color:#0a1710"><img src="/src/assets/crest-mono.svg" alt="Crest monocromo su fondo chiaro" width="200" /></div>
       </div>
     </div>
-    <p class="sub" style="margin-top:24px">Snippet favicon: &lt;link rel="icon" type="image/svg+xml" href="/favicon.svg" /&gt; — le PNG si esportano da qui e si caricano a mano nel repo (il push binario via API corrompe le immagini).</p>
+    <p class="sub" style="margin-top:24px">Snippet favicon: &lt;link rel="icon" type="image/svg+xml" href="/favicon.svg" /&gt; — le PNG si esportano da qui e si caricano a mano nel repo (il push binario via API corrompe le immagini). Upload richiesti per la F6: public/icons/icon-192.png · icon-512.png · maskable-192.png · maskable-512.png · apple-touch-icon.png (180×180, dall icona) · public/og.png (da questa card) · public/screenshots/wide-1280.png e narrow-540.png (screenshot veri dell app).</p>
   </div>
   <script>
-    async function exportPng(src, size) {
+    async function exportPng(src, w, h) {
       const res = await fetch(src)
       const svgText = await res.text()
       const blobUrl = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }))
       const img = new Image()
       img.onload = function () {
         const canvas = document.createElement("canvas")
-        canvas.width = size
-        canvas.height = size
+        canvas.width = w
+        canvas.height = h
         const ctx = canvas.getContext("2d")
-        ctx.drawImage(img, 0, 0, size, size)
+        ctx.drawImage(img, 0, 0, w, h)
         URL.revokeObjectURL(blobUrl)
         const a = document.createElement("a")
         a.href = canvas.toDataURL("image/png")
-        a.download = "pitchtory-" + src.split("/").pop().replace(".svg", "") + "-" + size + ".png"
+        a.download = "pitchtory-" + src.split("/").pop().replace(".svg", "") + "-" + w + "x" + h + ".png"
         a.click()
       }
       img.src = blobUrl
     }
     document.querySelectorAll("button[data-src]").forEach(function (b) {
-      b.addEventListener("click", function () { exportPng(b.dataset.src, Number(b.dataset.size)) })
+      b.addEventListener("click", function () {
+        var w = Number(b.dataset.w || b.dataset.size)
+        var h = Number(b.dataset.h || b.dataset.size)
+        exportPng(b.dataset.src, w, h)
+      })
     })
   </script>
 </body>
