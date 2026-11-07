@@ -1,8 +1,9 @@
+
 # Pitchtory ⚽
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: Fase 6 completa (v0.13.0) — motore partite, QTE, sostituzioni, infortuni, attributi 1-20, schede giocatore, fine stagione, mercato, abilità speciali, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa: manifest, service worker con aggiornamento controllato, header di sicurezza, installazione. Prossima: F7 Capacitor.
+> Stato: Fase 6 completa (v0.13.1) — motore partite, QTE, sostituzioni, infortuni, attributi 1-20, schede giocatore, fine stagione, mercato, abilità speciali, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa: manifest, service worker con aggiornamento controllato, header di sicurezza, installazione. Prossima: G1 — La Piramide.
 
 ## Sviluppo
 
@@ -77,7 +78,7 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 
 ## Decisioni di design
 
-- Sola Italia, una lega; data model già pensato multi-lega (prossimo futuro: più campionati con promosse e retrocesse)
+- Solo Italia al lancio, piramide a due leghe (Divisione d'Onore + serie cadetta) con promosse e retrocessioni; carriera inizia nella lega che vuoi. Data model multi-lega e multi-nazione dalla nascita: nazioni estere e Nazionali arrivano post-rilascio
 - Partite della propria squadra sempre live, con QTE nei momenti chiave (3 opzioni, timer 10 s, scelta prudente allo scadere)
 - Durata partita a scelta dell'utente: 1-2 min (compressa) · 5-6 min (rilassata) · 7-8 min (cronaca estesa); "salta al risultato" proposto prima del fischio d'inizio
 - Massimo 3 sostituzioni a partita, con stamina per ruolo e impatto deterministico dei freschi
@@ -99,7 +100,16 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 - [x] F5 — Abilità Speciali e osservatori
 - [x] F5.5 — Restyle grafico: identità «Notte di Divisione d'Onore» + logo kit
 - [x] F6 — PWA completa (manifest, service worker con banner Aggiorna, _headers, installazione Android + iOS)
+
+Serie G — prima dell'app Android:
+
+- [ ] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
+- [ ] G2 — Banco e Lavagnetta: moduli di gioco (4-3-3, 4-4-2, 3-4-3…) con slot per ruolo e matchup tra moduli, tattiche di squadra (attacco sulle fasce, contropiede, pressing a tutto campo…) che muovono le probabilità del motore
+- [ ] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, prestiti
+- [ ] G4 — Occhi sui Grandi: osservatori anche sui seniori avversari, attributi stimati finché non scoutati
+- [ ] G5 — Il Mercato degli Allenatori: club AI che licenziano per i risultati, candidature e offerte di lavoro, albo d'oro e storia della lega
 - [ ] F7 — Capacitor (app vera)
+- Post-rilascio: nazione estera, Nazionali
 
 ## Deploy
 
