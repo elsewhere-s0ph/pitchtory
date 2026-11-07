@@ -1,3 +1,4 @@
+
 /**
  * Generatore dell'universo fittizio (F1).
  * Tutto deterministico dal seed: stesso seed → stesse squadre, stessi
@@ -5,8 +6,8 @@
  */
 import { Rng, seedFromString } from '../lib/rng'
 import {
-  IT_FIRST, IT_LAST, FOREIGN_POOLS, TOPONYMS, CLUB_PATTERNS,
-  COLOR_PAIRS, TRADE_NICKS, STADIUM_NAMES, FIXED_CLUBS,
+  IT_FIRST, IT_LAST, FOREIGN_POOLS, TOPONYMS, TOPONYMS_CADETTE, CLUB_PATTERNS,
+  COLOR_PAIRS, TRADE_NICKS, STADIUM_NAMES, FIXED_CLUBS, FIXED_CLUBS_CADETTE,
 } from './names'
 import { FIELD_PROFILE, GK_PROFILE, deriveOvr } from './attributes'
 import { assignLeagueAbilities, abilityValueBonus } from './abilities'
@@ -33,14 +34,36 @@ function playerName(rng) {
   return rng.pick(IT_FIRST) + ' ' + rng.pick(IT_LAST)
 }
 
+/* ---------------- Leghe (G1: La Piramide) ---------------- */
+
+/** Le due serie dell'universo: gli id 'c' e 'a' finiscono nelle chiavi dei club. */
+export const LEAGUES = [
+  { id: 'c', name: "Divisione d'Onore", tier: 1 },
+  { id: 'a', name: "Campionato dell'Abnegazione", tier: 2 },
+]
+
+/** Profili per tier: quanto pesano reputazione, stadi, budget e strutture. */
+const D1_PROFILES = {
+  rep: { big: [88, 95], mid: [74, 83], small: [62, 73] },
+  cap: { big: [40000, 68000], mid: [22000, 38000], small: [11000, 24000] },
+  budget: { big: [40000000, 90000000], mid: [15000000, 40000000], small: [4000000, 15000000] },
+  fac: { big: [3, 5], mid: [1, 4], small: [1, 4] },
+}
+const AB_PROFILES = {
+  rep: { big: [58, 66], mid: [51, 58], small: [44, 51] },
+  cap: { big: [9000, 20000], mid: [5000, 12000], small: [2500, 8000] },
+  budget: { big: [3000000, 10000000], mid: [1000000, 4000000], small: [400000, 2000000] },
+  fac: { big: [1, 3], mid: [1, 3], small: [1, 2] },
+}
+
 /* ---------------- Club ---------------- */
 
 function colorPairByName(name) {
   return COLOR_PAIRS.find((c) => c.name === name)
 }
 
-function buildGeneratedClubs(rng) {
-  const tops = rng.shuffle(TOPONYMS)
+function buildGeneratedClubs(rng, TOPONYMS_POOL) {
+  const tops = rng.shuffle(TOPONYMS_POOL)
   const patterns = rng.shuffle(CLUB_PATTERNS)
   const colors = rng.shuffle(COLOR_PAIRS)
   const nicks = rng.shuffle(TRADE_NICKS)
@@ -65,9 +88,9 @@ function buildGeneratedClubs(rng) {
   })
 }
 
-function buildClubs(rng) {
-  const fixedColors = FIXED_CLUBS.map((c) => colorPairByName(c.colorPair))
-  const fixed = FIXED_CLUBS.map((c, i) => ({
+function buildLeagueClubs(rng, { leagueId, fixed, toponyms, profiles }) {
+  const fixedColors = fixed.map((c) => colorPairByName(c.colorPair))
+  const fixedRaw = fixed.map((c, i) => ({
     name: c.name,
     city: c.city,
     founded: c.founded,
@@ -75,24 +98,27 @@ function buildClubs(rng) {
     colors: fixedColors[i],
     stadiumName: c.stadiumName || ('Stadio ' + rng.pick(STADIUM_NAMES)),
   }))
-  const raw = [...fixed, ...buildGeneratedClubs(rng)]
+  const raw = [...fixedRaw, ...buildGeneratedClubs(rng, toponyms)]
 
   return raw.map((c, i) => {
-    // Tier per indice: 0-5 big, 6-11 medie, 12-19 piccole.
+    // Tier per indice: 0-5 big, 6-11 medie, 12-19 piccole. Il profilo della
+    // serie decide il peso: la cadetta ha stadi e budget da serie cadetta.
     const tier = i < 6 ? 'big' : i < 12 ? 'mid' : 'small'
-    const reputation = tier === 'big' ? rng.int(88, 95) : tier === 'mid' ? rng.int(74, 83) : rng.int(62, 73)
-    const capacity = tier === 'big' ? rng.int(40000, 68000) : tier === 'mid' ? rng.int(22000, 38000) : rng.int(11000, 24000)
-    const budget = tier === 'big' ? rng.int(40, 90) * 1e6 : tier === 'mid' ? rng.int(15, 40) * 1e6 : rng.int(4, 15) * 1e6
+    const [rlo, rhi] = profiles.rep[tier]
+    const [clo, chi] = profiles.cap[tier]
+    const [blo, bhi] = profiles.budget[tier]
+    const [flo, fhi] = profiles.fac[tier]
     return {
-      id: 'c' + String(i + 1).padStart(2, '0'),
+      id: leagueId + String(i + 1).padStart(2, '0'),
+      leagueId,
       ...c,
-      reputation,
-      stadium: { name: c.stadiumName, capacity: roundTo(capacity, 500) },
-      budget,
+      reputation: clamp(rng.int(rlo, rhi), 30, 95),
+      stadium: { name: c.stadiumName, capacity: roundTo(rng.int(clo, chi), 500) },
+      budget: rng.int(blo, bhi),
       facilities: {
-        stadiumLevel: tier === 'big' ? rng.int(3, 5) : rng.int(2, 4),
-        youthLevel: tier === 'big' ? rng.int(3, 5) : rng.int(1, 4),
-        staffLevel: tier === 'big' ? rng.int(3, 5) : rng.int(1, 4),
+        stadiumLevel: rng.int(flo, fhi),
+        youthLevel: rng.int(flo, fhi),
+        staffLevel: rng.int(flo, fhi),
       },
       tier,
     }
@@ -189,7 +215,11 @@ export function generateUniverse(seedInput) {
   const seed = typeof seedInput === 'string' ? seedFromString(seedInput) : seedInput >>> 0
   const rng = new Rng(seed)
 
-  const clubs = buildClubs(rng)
+  // La Piramide (G1): due leghe, quaranta club, un solo sogno.
+  const clubs = [
+    ...buildLeagueClubs(rng, { leagueId: LEAGUES[0].id, fixed: FIXED_CLUBS, toponyms: TOPONYMS, profiles: D1_PROFILES }),
+    ...buildLeagueClubs(rng, { leagueId: LEAGUES[1].id, fixed: FIXED_CLUBS_CADETTE, toponyms: TOPONYMS_CADETTE, profiles: AB_PROFILES }),
+  ]
   const players = []
   clubs.forEach((club, ci) => {
     const squad = buildSquad(club, rng, ci * 40)
@@ -198,9 +228,12 @@ export function generateUniverse(seedInput) {
     club.avgOvr = Math.round(seniors.reduce((s, p) => s + p.ovr, 0) / seniors.length)
   })
 
-  // Abilità speciali (F5): assegnate a tutta la lega dal seed, Fuoriclasse
-  // col tappo. E le abilità si pagano: valore e stipendio si aggiustano.
-  const abilityMap = assignLeagueAbilities(seed, players)
+  // Abilità speciali (F5): una chiamata per lega, così il tappo dei
+  // Fuoriclasse vale per ogni singolo campionato. E si pagano, eccome.
+  const abilityMap = {
+    ...assignLeagueAbilities(seed, players.filter((p) => p.clubId.startsWith(LEAGUES[0].id))),
+    ...assignLeagueAbilities((seed ^ 0xab1e) >>> 0, players.filter((p) => p.clubId.startsWith(LEAGUES[1].id))),
+  }
   for (const p of players) {
     p.abilities = abilityMap[p.id] || []
     p.value = Math.max(30000, roundTo(p.value * (1 + abilityValueBonus(p.abilities)), 10000))
@@ -210,7 +243,7 @@ export function generateUniverse(seedInput) {
   return {
     seed,
     season: SEASON,
-    competition: 'Divisione d\'Onore',
+    leagues: LEAGUES,
     clubs,
     players,
   }

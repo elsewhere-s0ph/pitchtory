@@ -1,3 +1,4 @@
+
 /**
  * Pool di nomi per l'universo fittizio di Football Eleven.
  * Tono voluto: cognomi italiani rari ma reali + stranieri per una lega
@@ -61,6 +62,12 @@ export const TOPONYMS = [
   'Montalino', 'Cavaioni', 'Travasona', 'Carvasa', 'Pertegada', 'Ricaldone',
 ]
 
+/** Toponimi della serie cadetta: l'Abnegazione ha i suoi paesi. */
+export const TOPONYMS_CADETTE = [
+  'Valbrina', 'Cisogna', 'Montepesco', 'Salvarezza', 'Collefitto', 'Pratale',
+  'Rivarotta', 'Camurana', 'Ossella', 'Trecosta', 'Vignalunga', 'Perticana',
+]
+
 /** {T} = toponimo, {Y} = anno di fondazione (opzionale). */
 export const CLUB_PATTERNS = [
   'AC {T}{Y}', 'SS {T}', 'US {T}', 'FC {T}', 'Fortitudo {T}',
@@ -105,4 +112,16 @@ export const FIXED_CLUBS = [
   { name: 'Delfino Arzavola', city: 'Arzavola', founded: 1932, nickname: 'i marinai', colorPair: 'celeste', stadiumName: null },
   { name: 'Pro Vergantia 1898', city: 'Vergantia', founded: 1898, nickname: 'i tessitori', colorPair: 'bianconero', stadiumName: 'Velodromo Piave' },
   { name: 'SS Pietrafesa', city: 'Pietrafesa', founded: 1936, nickname: 'i minatori', colorPair: 'rossoblù', stadiumName: null },
+]
+
+/** Gli 8 club validati della serie cadetta, con una storia tutta loro. */
+export const FIXED_CLUBS_CADETTE = [
+  { name: 'Sporting Valmerla 1922', city: 'Valmerla', founded: 1922, nickname: 'i canestrai', colorPair: 'giallorosso', stadiumName: null },
+  { name: 'Audax Petrarossa 1913', city: 'Petrarossa', founded: 1913, nickname: 'i tagliapietre', colorPair: 'arancio e nero', stadiumName: null },
+  { name: 'Pro Litornese 1927', city: 'Litorno', founded: 1927, nickname: 'i barcaioli', colorPair: 'verde e bianco', stadiumName: null },
+  { name: 'Virtus Cavarnina 1918', city: 'Cavarnina', founded: 1918, nickname: 'i segantini', colorPair: 'viola', stadiumName: null },
+  { name: 'Fiamma Ostricana 1924', city: 'Ostrica', founded: 1924, nickname: 'i vetrai', colorPair: 'gialloblù', stadiumName: null },
+  { name: 'USD Dossarese 1920', city: 'Dossara', founded: 1920, nickname: 'i cavallari', colorPair: 'granata e blu', stadiumName: null },
+  { name: 'AC Malveglia 1915', city: 'Malveglia', founded: 1915, nickname: 'i conciatori', colorPair: 'azzurro', stadiumName: null },
+  { name: 'SS Rivorotonda 1926', city: 'Rivorotonda', founded: 1926, nickname: 'i fornaciai', colorPair: 'bianconero', stadiumName: null },
 ]
