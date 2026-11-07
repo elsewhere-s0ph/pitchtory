@@ -1,9 +1,10 @@
 
+
 # Pitchtory ⚽
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: Fase 6 completa (v0.13.1) — motore partite, QTE, sostituzioni, infortuni, attributi 1-20, schede giocatore, fine stagione, mercato, abilità speciali, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa: manifest, service worker con aggiornamento controllato, header di sicurezza, installazione. Prossima: G1 — La Piramide.
+> Stato: G1 — La Piramide completa (v0.15.0): due leghe con promozioni e retrocessioni, Coppa Nazionale Trofeo Bellandi, squalifiche, rosa leggibile su mobile — più motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G2 — Banco e Lavagnetta.
 
 ## Sviluppo
 
@@ -72,6 +73,15 @@ Pitchtory è una PWA completa secondo lo standard Little Elsewhere:
 - **Social**: `og:image` 1200×630 con `og:image:alt`, `twitter:card summary_large_image`, JSON-LD `SoftwareApplication` (offers price 0, niente rating auto-attribuito). L'app è l'unica pagina del prodotto: indicizzata, senza cannibalizzazione.
 - **PNG a mano**: il push binario via API corrompe le immagini, quindi icone PNG (192/512 any + maskable, apple-touch 180) ed `og.png` si esportano da `logokit.html` e si caricano via web in `public/icons/` e `public/`; gli screenshot veri della app (1280×720 e 540×960) vanno in `public/screenshots/`.
 - **Lingua**: il gioco è pensato in italiano (lega fittizia, tono ironico): manifest e contenuti in IT, niente toggle EN.
+## La Piramide (G1)
+
+Due serie, una coppa, e le conseguenze che vengono con entrambe:
+
+- **Due leghe**: Divisione d'Onore e Campionato dell'Abnegazione (la serie cadetta). La carriera parte nella lega che vuoi; a fine stagione due salgono e due scendono, con budget e reputazione che seguono la direzione.
+- **Coppa Nazionale Trofeo Bellandi**: eliminazione diretta tra le due serie — 32 società (16 per serie, le più blasonate), cinque turni dopo la 38ª di campionato. Niente pareggi: chi passa lo decide dal seed, ai rigori se serve.
+- **Squalifiche**: espulsione = una giornata di stop, quinta ammonizione = una giornata e il contatore riparte. Vale per chiunque scenda in campo, QTE o simulazione che sia.
+- **Classifiche separate** per lega, calendari distinti: le partite di Coppa non toccano i campionati.
+- **Rosa leggibile su mobile**: la riga del giocatore va su due righe al telefono (il nome si legge per intero), una riga al desktop.
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -103,7 +113,7 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 
 Serie G — prima dell'app Android:
 
-- [ ] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
+- [x] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
 - [ ] G2 — Banco e Lavagnetta: moduli di gioco (4-3-3, 4-4-2, 3-4-3…) con slot per ruolo e matchup tra moduli, tattiche di squadra (attacco sulle fasce, contropiede, pressing a tutto campo…) che muovono le probabilità del motore
 - [ ] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, prestiti
 - [ ] G4 — Occhi sui Grandi: osservatori anche sui seniori avversari, attributi stimati finché non scoutati
