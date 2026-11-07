@@ -1,4 +1,5 @@
 
+
 import Dexie from 'dexie'
 import { generateUniverse, playerValue, LEAGUES } from './game/universe'
 import { generateSchedule } from './game/schedule'
@@ -8,6 +9,7 @@ import { deriveOvr, migrateAttrs, rollAttrsForOvr, growAttrs, declineAttrs } fro
 import { aiTransferDeals } from './game/market'
 import { assignLeagueAbilities, abilityValueBonus } from './game/abilities'
 import { Rng, seedFromString } from './lib/rng'
+import { simulateMatch, matchSeed, matchSeedNumber, teamStrength } from './game/engine'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -32,6 +34,127 @@ export const UNIVERSE_VERSION = 2
 
 /** Sale per il calendario di ogni lega: stessa carriera, stesse sorti. */
 const LEAGUE_SCHED_SALT = { c: 0, a: 0x1eaf }
+
+/** Coppa Nazionale Trofeo Bellandi (G1): eliminazione diretta tra le due
+ * serie. 32 società (16 per serie, le più titolate), cinque turni che si
+ * giocano dopo la 38ª di campionato: qui i pari non esistono. */
+export const CUP_NAME = 'Coppa Nazionale Trofeo Bellandi'
+export const CUP_ROUNDS = { 1: 'Sedicesimi', 2: 'Ottavi', 3: 'Quarti', 4: 'Semifinale', 5: 'Finale' }
+const CUP_LEAGUE_ID = 'b'
+const CUP_MAX_ROUND = 5
+
+function cupQualifiers(clubs) {
+  const forLeague = (id) => clubs.filter((c) => c.leagueId === id).sort((a, b) => b.reputation - a.reputation).slice(0, 16)
+  return [...forLeague(LEAGUES[0].id), ...forLeague(LEAGUES[1].id)]
+}
+
+async function addCupRound(careerId, round, pairs) {
+  await db.fixtures.bulkAdd(pairs.map(([home, away], i) => ({
+    key: careerId + ':' + CUP_LEAGUE_ID + round + 'm' + i,
+    careerId,
+    leagueId: CUP_LEAGUE_ID,
+    type: 'cup',
+    round,
+    number: 38 + round,
+    leg: 1,
+    homeId: home.id,
+    awayId: away.id,
+    played: false,
+    homeGoals: null,
+    awayGoals: null,
+    winnerId: null,
+  })))
+}
+
+/** Turno 1: le 32 più titolate, il sorteggio è scritto nel seed. */
+export async function createCupFirstRound(careerId, clubs, seed, season) {
+  const rng = new Rng(seedFromString(seed + ':cup:' + season))
+  const pool = rng.shuffle(cupQualifiers(clubs))
+  const pairs = []
+  for (let i = 0; i + 1 < pool.length; i += 2) {
+    pairs.push(rng.chance(0.5) ? [pool[i], pool[i + 1]] : [pool[i + 1], pool[i]])
+  }
+  await addCupRound(careerId, 1, pairs)
+}
+
+/** Turno successivo: quando l'ultimo incontro del turno è finito, i
+ * vincitori si accoppiano a bracket (chi esce dalla i-esima aspetta chi
+ * esce dalla successiva). */
+export async function createNextCupRound(careerId) {
+  const cupFx = await db.fixtures.where('careerId').equals(careerId).filter((f) => f.leagueId === CUP_LEAGUE_ID).toArray()
+  if (!cupFx.length) return
+  const maxRound = Math.max(...cupFx.map((f) => f.round))
+  if (maxRound >= CUP_MAX_ROUND) return
+  const current = cupFx.filter((f) => f.round === maxRound)
+  if (current.some((f) => !f.played)) return
+  const winners = current.slice().sort((a, b) => (a.key < b.key ? -1 : 1)).map((f) => f.winnerId)
+  const pairs = []
+  for (let i = 0; i + 1 < winners.length; i += 2) {
+    pairs.push([{ id: winners[i] }, { id: winners[i + 1] }])
+  }
+  if (pairs.length) await addCupRound(careerId, maxRound + 1, pairs)
+}
+
+/** Rigori: la Coppa non ammette pari, e il destino è nel seed. */
+export function cupShootout(career, fixture, homeClub, awayClub, playersByClub) {
+  const rng = new Rng((matchSeedNumber(career.seed, fixture.key + '#' + career.season) ^ 0x9e2d) >>> 0)
+  const sh = teamStrength(homeClub, playersByClub[homeClub.id] || [])
+  const sa = teamStrength(awayClub, playersByClub[awayClub.id] || [])
+  const pHome = clamp(0.5 + (sh - sa) * 0.05, 0.3, 0.7)
+  const winner = rng.float() < pHome ? homeClub : awayClub
+  return {
+    winnerId: winner.id,
+    event: { minute: 94, type: 'pen', text: 'Rigori: passa il ' + winner.name + '. Il Trofeo Bellandi non guarda in faccia nessuno' },
+  }
+}
+
+/** Chiude la Coppa a stagione finita (eliminato o no, qui si decide tutto
+ * in simulazione). Ritorna l'id del club che alza il trofeo, o null. */
+async function closeCup(careerId, career, clubs, players) {
+  const clubById = Object.fromEntries(clubs.map((c) => [c.id, c]))
+  const playersByClub = {}
+  for (const p of players) (playersByClub[p.clubId] = playersByClub[p.clubId] || []).push(p)
+  for (let guard = 0; guard < 20; guard++) {
+    const cupFx = await db.fixtures.where('careerId').equals(careerId).filter((f) => f.leagueId === CUP_LEAGUE_ID).toArray()
+    if (!cupFx.length) return null
+    const maxRound = Math.max(...cupFx.map((f) => f.round))
+    const current = cupFx.filter((f) => f.round === maxRound)
+    if (current.every((f) => f.played)) {
+      if (maxRound >= CUP_MAX_ROUND) return current[0].winnerId
+      await createNextCupRound(careerId)
+      continue
+    }
+    for (const f of current.filter((x) => !x.played)) {
+      const sim = simulateMatch(clubById[f.homeId], clubById[f.awayId], playersByClub, matchSeed(career.seed, f.key + '#' + career.season))
+      const winnerId = sim.homeGoals === sim.awayGoals
+        ? cupShootout(career, f, clubById[f.homeId], clubById[f.awayId], playersByClub).winnerId
+        : sim.homeGoals > sim.awayGoals ? f.homeId : f.awayId
+      await db.fixtures.update(f.key, { played: true, homeGoals: sim.homeGoals, awayGoals: sim.awayGoals, winnerId })
+      await applyAiMatchday(f, sim.events, players)
+    }
+  }
+  return null
+}
+
+/** Squalifiche (G1): espulsione = una giornata di stop, quinta
+ * ammonizione = una giornata e il contatore riparte. Vale per chiunque
+ * scenda in campo, QTE o simulazione che sia. */
+async function writeSuspensions(fixture, events, byId) {
+  const reds = new Set(events.filter((e) => e.type === 'red' && e.playerId).map((e) => e.playerId))
+  const yellows = {}
+  for (const e of events) if (e.type === 'card' && e.playerId) yellows[e.playerId] = (yellows[e.playerId] || 0) + 1
+  for (const id of new Set([...reds, ...Object.keys(yellows)])) {
+    const p = byId.get(id)
+    if (!p || !p.key) continue
+    const tot = (p.cards || 0) + (yellows[id] || 0)
+    const red = reds.has(id)
+    if (red || tot >= 5) {
+      await db.players.update(p.key, { bannedUntil: fixture.number + 1, cards: red ? tot : tot - 5 })
+    } else {
+      await db.players.update(p.key, { cards: tot })
+    }
+  }
+}
 
 /** Calendari di tutte le leghe: una riga per partita, chiave unica per lega. */
 function buildLeagueFixtures(careerId, clubs, scheduleSeed) {
@@ -92,6 +215,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
       ...p,
     })))
     await db.fixtures.bulkAdd(buildLeagueFixtures(careerId, universe.clubs, (seed ^ 0x5ced) >>> 0))
+    await createCupFirstRound(careerId, universe.clubs, seed, universe.season)
   })
 
   return careerId
@@ -183,7 +307,7 @@ export async function deleteCareer(id) {
 export async function saveFixtureResults(results) {
   await db.transaction('rw', db.fixtures, async () => {
     for (const r of results) {
-      await db.fixtures.update(r.key, { played: true, homeGoals: r.homeGoals, awayGoals: r.awayGoals })
+      await db.fixtures.update(r.key, { played: true, homeGoals: r.homeGoals, awayGoals: r.awayGoals, winnerId: r.winnerId !== undefined ? r.winnerId : null })
     }
   })
 }
@@ -198,7 +322,11 @@ export async function applyPostMatch(careerId, fixture, result, userClubId, user
   const userSide = isHome ? 'home' : 'away'
   const userGoals = isHome ? result.homeGoals : result.awayGoals
   const oppGoals = isHome ? result.awayGoals : result.homeGoals
-  const delta = userGoals > oppGoals ? 5 : userGoals < oppGoals ? -5 : 1
+  let delta = userGoals > oppGoals ? 5 : userGoals < oppGoals ? -5 : 1
+  // La Coppa non conosce i pareggi: i rigori contano come vittoria o sconfitta.
+  if (fixture.type === 'cup' && userGoals === oppGoals) {
+    delta = result.cupWinnerId === userClubId ? 3 : -2
+  }
 
   const goalCounts = {}
   for (const e of result.events) {
@@ -227,19 +355,22 @@ export async function applyPostMatch(careerId, fixture, result, userClubId, user
       const p = byId.get(e.playerId)
       if (p && p.key) await db.players.update(p.key, { injuredUntil: fixture.number + e.weeks })
     }
+    await writeSuspensions(fixture, result.events, byId)
   })
 }
 
-/** Infortuni delle partite simulate in background: la lega soffrice quanto te. */
+/** Partite simulate in background: la lega si infortuna e si squalifica quanto te. */
 export async function applyAiMatchday(fixture, events, allPlayers) {
   const byId = new Map((allPlayers || []).map((p) => [p.id, p]))
   const injuries = events.filter((e) => e.type === 'injury' && e.playerId && e.weeks)
-  if (!injuries.length) return
+  const cardsOrReds = events.some((e) => e.playerId && (e.type === 'card' || e.type === 'red'))
+  if (!injuries.length && !cardsOrReds) return
   await db.transaction('rw', db.players, async () => {
     for (const e of injuries) {
       const p = byId.get(e.playerId)
       if (p && p.key) await db.players.update(p.key, { injuredUntil: fixture.number + e.weeks })
     }
+    await writeSuspensions(fixture, events, byId)
   })
 }
 
@@ -332,6 +463,14 @@ export async function endSeason(careerId) {
     declined: [],
   }
 
+  // Prima dell'estate si chiude la Coppa: se il mister è ancora dentro,
+  // qui decide tutto in simulazione (il bottone di fine stagione appare
+  // solo quando non ha più partite da giocare).
+  const cupWinnerId = await closeCup(careerId, career, clubs, players)
+  const cupWinnerName = cupWinnerId && clubById[cupWinnerId] ? clubById[cupWinnerId].name : null
+  summary.cupWinner = cupWinnerName
+  summary.userCupWinner = cupWinnerId === career.clubId
+
   const baseSeed = career.seed + ':' + career.season + ':'
 
   // Statistiche sintetiche per i club AI, così anche la lega evolves:
@@ -379,6 +518,8 @@ export async function endSeason(careerId) {
         minutes: 0,
         goals: 0,
         injuredUntil: null,
+        bannedUntil: null,
+        cards: 0,
       }
       if (p.clubId === career.clubId && growth !== 0) {
         const entry = { name: p.name, from: p.ovr, to: ovr, youth: p.youth }
@@ -464,12 +605,16 @@ export async function endSeason(careerId) {
           const ch = standingsByLeague[l.id][0]
           return { season: career.season, competition: l.name, championId: ch.clubId, championName: ch.name }
         }),
+        ...(cupWinnerId ? [{ season: career.season, competition: CUP_NAME, championId: cupWinnerId, championName: cupWinnerName }] : []),
       ],
     })
 
     await db.fixtures.where('careerId').equals(careerId).delete()
     await db.fixtures.bulkAdd(buildLeagueFixtures(careerId, clubs, (career.seed ^ (0x5ced + career.season)) >>> 0))
   })
+
+  // Nuova stagione, nuova Coppa: le 32 più titolate si risedono al tavolo.
+  await createCupFirstRound(careerId, clubs, career.seed, career.season + 1)
 
   const weight = (x) => Math.abs(x.to - x.from)
   summary.progressed.sort((a, b) => weight(b) - weight(a))
