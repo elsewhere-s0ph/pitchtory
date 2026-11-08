@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { askingPrice, respondToOffer, aiBidFor, boughtContract } from '../game/market'
-import { transferPlayer, loanPlayer } from '../db'
+import { transferPlayer, loanPlayer, scoutPlayer } from '../db'
 import { loanDeal, MAX_LOANS_IN } from '../game/finance'
+import { scoutedOvr, SCOUT_REPORT_COST } from '../game/scouting'
 import { ABILITIES } from '../game/abilities'
+import PlayerCard from './PlayerCard'
 
 const ROLES = ['Tutti', 'GK', 'DF', 'MF', 'FW']
 const ROLE_BADGE = { GK: 'P', DF: 'D', MF: 'C', FW: 'A' }
@@ -41,11 +43,18 @@ function Pill({ children, tone }) {
   return <span className={'rounded px-1.5 py-0.5 text-[10px] font-semibold ' + cls}>{children}</span>
 }
 
-function MarketRow({ p, club, asking, injured, onOpen }) {
+function MarketRow({ p, club, asking, injured, onOpen, scouts, scouted }) {
+  // Occhi sui Grandi (G4): senza report l'OVR è una lettura a occhio della
+  // rete — la tilde è la firma dell'osservatorio, non del giocatore.
+  const est = !scouted.has(p.id)
+  const ovr = est ? scoutedOvr(p, scouts) : p.ovr
   return (
     <li className="border-b border-pitch-800/60 last:border-0">
       <button onClick={onOpen} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-pitch-800/50">
-        <span className={'w-8 shrink-0 rounded py-0.5 text-center text-xs font-bold ' + ovrClass(p.ovr)}>{p.ovr}</span>
+        <span
+          className={'w-8 shrink-0 rounded py-0.5 text-center text-xs font-bold ' + ovrClass(ovr)}
+          title={est ? 'Stima dei tuoi osservatori: il report dice la verità' : null}
+        >{est ? '~' + ovr : ovr}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm text-pitch-100">{p.name}</span>
           <span className="block truncate text-[10px] text-pitch-400">{club ? club.name : ''}</span>
@@ -88,8 +97,10 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)
   const [loanResult, setLoanResult] = useState(null)
+  const [cardOpen, setCardOpen] = useState(false)
 
   const clubById = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c])), [clubs])
+  const scouted = useMemo(() => new Set(career.scouted || []), [career.scouted])
   const playersByClub = useMemo(() => {
     const m = {}
     for (const p of players) (m[p.clubId] = m[p.clubId] || []).push(p)
@@ -121,9 +132,9 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
     if (role !== 'Tutti') list = list.filter((p) => p.role === role)
     const q = query.trim().toLowerCase()
     if (q) list = list.filter((p) => p.name.toLowerCase().includes(q))
-    const keyOf = (p) => (sort === 'ovr' ? p.ovr : sort === 'price' ? askingById[p.id] || 0 : -p.age)
+    const keyOf = (p) => (sort === 'ovr' ? (scouted.has(p.id) ? p.ovr : scoutedOvr(p, career.scouts)) : sort === 'price' ? askingById[p.id] || 0 : -p.age)
     return list.slice().sort((a, b) => keyOf(b) - keyOf(a)).slice(0, 60)
-  }, [players, userClub.id, role, query, sort, askingById])
+  }, [players, userClub.id, role, query, sort, askingById, scouted, career.scouts])
 
   const sellList = useMemo(
     () => players.filter((p) => p.clubId === userClub.id && !p.youth).slice().sort((a, b) => b.ovr - a.ovr),
@@ -136,6 +147,7 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
     setBid(null)
     setOfferInput('')
     setLoanResult(null)
+    setCardOpen(false)
   }
 
   function openBuy(p) {
@@ -172,6 +184,23 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
       await onDone()
     } catch (err) {
       setResponse({ status: 'rejected', message: 'Non se ne fa nulla: ' + (err && err.message ? err.message : 'errore') })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Occhi sui Grandi (G4): si manda la rete su un uomo solo. La verità
+   *  si paga una volta e non si scorda più — il foglio resta aperto, che
+   *  la si legga subito è il minimo, considerando il prezzo. */
+  async function scout() {
+    if (!sheet || busy) return
+    setBusy(true)
+    try {
+      await scoutPlayer(career.id, sheet.id)
+      setNotice({ ok: true, text: 'Report nel cassetto: ' + sheet.name + ' letto per bene — OVR, attributi e abilità, la verità.' })
+      await onDone()
+    } catch (err) {
+      setNotice({ ok: false, text: 'Niente report: ' + (err && err.message ? err.message : 'errore') })
     } finally {
       setBusy(false)
     }
@@ -305,6 +334,8 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
               <MarketRow
                 key={p.id}
                 p={p}
+                scouts={career.scouts}
+                scouted={scouted}
                 club={clubById[p.clubId]}
                 asking={askingById[p.id] || 0}
                 injured={!!p.injuredUntil && p.injuredUntil >= currentRound}
@@ -354,17 +385,36 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
                 <p className="text-sm font-bold text-pitch-100">{sheet.age}</p>
               </div>
               <div className="rounded-xl bg-pitch-800 py-2">
-                <p className="text-[10px] uppercase tracking-wide text-pitch-400">OVR</p>
-                <p className="text-sm font-bold text-flood-300">{sheet.ovr}</p>
+                <p className="text-[10px] uppercase tracking-wide text-pitch-400">{mode === 'buy' && !scouted.has(sheet.id) ? 'OVR stimato' : 'OVR'}</p>
+                <p className="text-sm font-bold text-flood-300">{mode === 'buy' && !scouted.has(sheet.id) ? '~' + scoutedOvr(sheet, career.scouts) : sheet.ovr}</p>
               </div>
             </div>
+            <button
+              onClick={() => setCardOpen(true)}
+              className="w-full rounded-xl border border-pitch-600 px-3 py-2 text-xs font-semibold text-pitch-300 transition hover:border-teal-400 hover:text-teal-200"
+            >Apri la scheda{mode === 'buy' && !scouted.has(sheet.id) ? ' — lettura a occhio' : ''}</button>
 
             {mode === 'buy' ? (
               <div className="space-y-3">
-                {Array.isArray(sheet.abilities) && sheet.abilities.length > 0 ? (
+                {mode === 'buy' && !scouted.has(sheet.id) ? (
+                  <p className="text-xs text-pitch-400">✦ Abilità: da scoprire — le carte le mostra solo il report.</p>
+                ) : Array.isArray(sheet.abilities) && sheet.abilities.length > 0 ? (
                   <p className="text-xs text-flood-300">
                     ✦ Abilità: {sheet.abilities.map((id) => (ABILITIES[id] ? ABILITIES[id].name : id)).join(' · ')}
                   </p>
+                ) : null}
+                {mode === 'buy' ? (
+                  scouted.has(sheet.id) ? (
+                    <p className="rounded-xl border border-teal-400/30 bg-teal-400/10 px-3 py-2 text-xs text-teal-200">
+                      Report nel cassetto: quello che leggi è la verità, e non si scorda più.
+                    </p>
+                  ) : (
+                    <button
+                      onClick={scout}
+                      disabled={busy || userClub.budget < SCOUT_REPORT_COST}
+                      className="w-full rounded-xl border border-flood-400/40 px-3 py-2 text-xs font-semibold text-flood-300 transition hover:bg-flood-400/10 disabled:opacity-40"
+                    >Manda gli osservatori · report {fmtMoney(SCOUT_REPORT_COST)}</button>
+                  )
                 ) : null}
                 <p className="text-sm text-pitch-300">
                   Prezzo richiesto: <span className="font-bold text-teal-300">{fmtMillions(askingById[sheet.id] || 0)}</span>
@@ -498,6 +548,15 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
             )}
           </div>
         </div>
+      ) : null}
+      {cardOpen && sheet ? (
+        <PlayerCard
+          player={sheet}
+          scouts={career.scouts}
+          round={currentRound}
+          reveal={mode === 'sell' || scouted.has(sheet.id)}
+          onClose={() => setCardOpen(false)}
+        />
       ) : null}
     </div>
   )
