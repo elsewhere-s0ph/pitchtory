@@ -3,11 +3,12 @@
 
 
 
+
 # Pitchtory ⚽
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G1 — La Piramide completa (vv0.16.0): due leghe con promozioni e retrocessioni, Coppa Nazionale Trofeo Bellandi a sedici infrasettimanale con rigori giocati, squalifiche, rosa leggibile su mobile — più motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G2 — Banco e Lavagnetta.
+> Stato: G2 — Banco e Lavagnetta (v0.16.0): sei moduli con slot per ruolo e dazio di posizione, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo in corsa dal pannello cambi, AI con la sua lavagnetta — sopra La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G3 — Cassa e Stadio.
 
 ## Sviluppo
 
@@ -140,7 +141,7 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 Serie G — prima dell'app Android:
 
 - [x] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
-- [ ] G2 — Banco e Lavagnetta: moduli di gioco (4-3-3, 4-4-2, 3-4-3…) con slot per ruolo e matchup tra moduli, tattiche di squadra (attacco sulle fasce, contropiede, pressing a tutto campo…) che muovono le probabilità del motore
+- [x] G2 — Banco e Lavagnetta: sei moduli con slot per ruolo e dazio di posizione, matchup tra moduli, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo in corsa
 - [ ] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, prestiti
 - [ ] G4 — Occhi sui Grandi: osservatori anche sui seniori avversari, attributi stimati finché non scoutati
 - [ ] G5 — Il Mercato degli Allenatori: club AI che licenziano per i risultati, candidature e offerte di lavoro, albo d'oro e storia della lega
