@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, subImpact } from '../game/engine'
 import { Rng, seedFromString } from '../lib/rng'
-import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, bestXIFor } from '../game/tactics'
+import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, bestXIFor, lineupXI } from '../game/tactics'
 import { hasAbility } from '../game/abilities'
 import { LEAGUES } from '../game/universe'
 import { CUP_NAME, CUP_ROUNDS } from '../db'
@@ -88,28 +88,42 @@ export default function MatchScreen({ fixture, onDone }) {
   }, [playersByClub, fixture])
 
   const userTactics = useMemo(() => ({ ...DEFAULT_TACTICS, ...(career.tactics || {}) }), [career])
+  /** Rosa senior della squadra utente: XI titolare e panchina. */
+  const userSquad = useMemo(
+    () => (fitPlayersByClub[career.clubId] || []).filter((p) => !p.youth),
+    [fitPlayersByClub, career],
+  )
+  /** L'undici scelto in Lavagnetta (G2.1): undici id allineati agli slot
+   *  del modulo — valgono finché il modulo è ancora quello. */
+  const userPicks = useMemo(
+    () =>
+      career.lineup && career.lineup.formation === userTactics.formation && Array.isArray(career.lineup.picks)
+        ? career.lineup.picks
+        : null,
+    [career, userTactics],
+  )
   const match = useMemo(() => {
     const seedNumber = matchSeedNumber(career.seed, fixture.key + '#' + career.season)
     const rng = new Rng(seedNumber)
     const userIsHome = fixture.homeId === career.clubId
     // G2: la lavagnetta del mister scende in campo con la squadra.
+    // G2.1: con anche i nomi, slot per slot, scelti in Lavagnetta.
+    const userSquadNow = (fitPlayersByClub[career.clubId] || []).filter((p) => !p.youth)
+    const picked = userPicks ? lineupXI(userTactics.formation, userSquadNow, userPicks) : null
     const built = buildMatch(clubById[fixture.homeId], clubById[fixture.awayId], fitPlayersByClub, rng, {
       keyMoments: true,
       seedNumber,
       userClubId: career.clubId,
       homeTactics: userIsHome ? userTactics : null,
       awayTactics: userIsHome ? null : userTactics,
+      homeXI: userIsHome ? picked : null,
+      awayXI: userIsHome ? null : picked,
     })
     return { ...built, userIsHome, seedNumber }
-  }, [career, clubById, fitPlayersByClub, fixture, userTactics])
+  }, [career, clubById, fitPlayersByClub, fixture, userTactics, userPicks])
 
-  /** Rosa senior della squadra utente: XI titolare e panchina. */
-  const userSquad = useMemo(
-    () => (fitPlayersByClub[career.clubId] || []).filter((p) => !p.youth),
-    [fitPlayersByClub, career],
-  )
   const activeFormation = currentFormation || userTactics.formation
-  const xi = useMemo(() => bestXIFor(userTactics.formation, userSquad), [userTactics, userSquad])
+  const xi = useMemo(() => lineupXI(userTactics.formation, userSquad, userPicks), [userTactics, userSquad, userPicks])
   const bench = useMemo(() => userSquad.filter((p) => !xi.some((t) => t.id === p.id)), [userSquad, xi])
 
   const [stamina, setStamina] = useState(() => Object.fromEntries(xi.map((p) => [p.id, 100])))
@@ -418,15 +432,19 @@ export default function MatchScreen({ fixture, onDone }) {
             <div className="mx-auto max-w-sm rounded-xl border border-slate-700 bg-pitch-900 p-4 text-left">
               <p className="text-center text-xs text-slate-400">
                 Lavagnetta: <span className="font-semibold text-flood-300">{FORMATIONS[userTactics.formation].name}</span> · {userTactics.mentality} · pressing {userTactics.pressing} · linea {userTactics.line}
+                {userPicks ? ' · undici scelto da te' : ''}
               </p>
               <div className="mt-3 space-y-1">
                 {['FW', 'MF', 'DF', 'GK'].map((r) => (
                   <div key={r} className="flex items-center gap-2">
                     <span className="w-7 text-[10px] font-bold tracking-widest text-slate-500">{r}</span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-300">{xi.filter((p) => p.slot === r).map((p) => p.name).join(' · ')}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-300">{xi.filter((p) => p.slot === r).map((p) => p.name + (affinity(p.role, p.slot) < 1 ? ' *' : '')).join(' · ')}</span>
                   </div>
                 ))}
               </div>
+              {xi.some((p) => affinity(p.role, p.slot) < 1) && (
+                <p className="mt-2 text-center text-[10px] text-amber-300/80">* fuori ruolo: rende meno, e la partita se ne accorge</p>
+              )}
               <p className="mt-3 text-center text-xs text-slate-400">Loro si preparano col {FORMATIONS[(match.userIsHome ? match.awayTactics : match.homeTactics).formation].name}</p>
             </div>
             <div className="mx-auto flex max-w-xs flex-col gap-2">
