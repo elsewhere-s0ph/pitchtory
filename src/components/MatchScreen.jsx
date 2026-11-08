@@ -25,6 +25,8 @@ const MATCH_MINUTES = 90
 const STAMINA_DECAY = { GK: 0.35, DF: 0.75, MF: 0.9, FW: 0.85 }
 /** Energia con cui entra un giocatore fresco. */
 const FRESH_STAMINA = 97
+/** Etichette della mentalità per la lavagnetta in corsa. */
+const MENTALITY_LABELS = { prudente: 'Prudente', equilibrata: 'Equilibrata', ardita: 'Ardita' }
 
 function eventClass(e) {
   if (e.type === 'goal') return 'border-flood-400/50 bg-flood-400/10 font-semibold text-flood-200 shadow-[0_0_16px_rgba(239,191,78,0.15)]'
@@ -68,6 +70,9 @@ export default function MatchScreen({ fixture, onDone }) {
   const [pensAuto, setPensAuto] = useState(false)
   const [currentFormation, setCurrentFormation] = useState(null)
   const [formChangesOpen, setFormChangesOpen] = useState(false)
+  const [forcedOutId, setForcedOutId] = useState(null)
+  const [currentMentality, setCurrentMentality] = useState(null)
+  const [dismissedIdx, setDismissedIdx] = useState(() => new Set())
 
   const clubById = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c])), [clubs])
   const playersByClub = useMemo(() => {
@@ -123,6 +128,7 @@ export default function MatchScreen({ fixture, onDone }) {
   }, [career, clubById, fitPlayersByClub, fixture, userTactics, userPicks])
 
   const activeFormation = currentFormation || userTactics.formation
+  const activeMentality = currentMentality || userTactics.mentality
   const xi = useMemo(() => lineupXI(userTactics.formation, userSquad, userPicks), [userTactics, userSquad, userPicks])
   const bench = useMemo(() => userSquad.filter((p) => !xi.some((t) => t.id === p.id)), [userSquad, xi])
 
@@ -189,9 +195,14 @@ export default function MatchScreen({ fixture, onDone }) {
   }
   const momentEvents = useMemo(() => eventsForResolutions(resolved), [match, resolved])
 
+  // G2.2: un gol annullato dalla barricata (mentalità prudente) esce dal
+  // copione — dal vivo, dal punteggio e dalla storia della partita.
   const allEvents = useMemo(
-    () => [...match.baseEvents, ...momentEvents, ...subEvents].sort((a, b) => a.minute - b.minute),
-    [match, momentEvents, subEvents],
+    () =>
+      [...match.baseEvents.filter((e, i) => !dismissedIdx.has(i)), ...momentEvents, ...subEvents].sort(
+        (a, b) => a.minute - b.minute,
+      ),
+    [match, momentEvents, subEvents, dismissedIdx],
   )
 
   const pendingMoment = match.keyMoments.find((m) => m.minute <= minute && resolved[m.id] === undefined)
@@ -236,7 +247,9 @@ export default function MatchScreen({ fixture, onDone }) {
     return () => clearTimeout(id)
   }, [phase, minute, career, pendingMoment])
 
-  // Infortuni in campo: cambio obbligato se resta un cambio, altrimenti dieci uomini.
+  // Infortuni in campo (G2.2): il pannello cambi si apre da solo — il
+  // mister sceglie chi entra. Se lo chiude senza decidere, sceglie lo
+  // staff per affinità; senza cambi disponibili, si resta in dieci.
   useEffect(() => {
     if (phase !== 'live') return
     const pending = match.baseEvents.find(
@@ -244,28 +257,25 @@ export default function MatchScreen({ fixture, onDone }) {
         e.type === 'injury' && e.side === userSide && e.minute <= minute && !subs.some((s) => s.outId === e.playerId),
     )
     if (!pending) return
-    const outP = userSquad.find((p) => p.id === pending.playerId)
-    const onField = outP && onPitch.some((p) => p.id === outP.id)
-    const benchAvail = bench.filter((p) => !subs.some((s) => s.inId === p.id))
-    const slotRole = outP && outP.slot ? outP.slot : outP ? outP.role : 'MF'
-    const inP =
-      onField && subsUsed < MAX_SUBS
-        ? benchAvail.slice().sort((a, b) => b.ovr * affinity(b.role, slotRole) - a.ovr * affinity(a.role, slotRole))[0] || null
-        : null
+    const outP = onPitch.find((p) => p.id === pending.playerId)
     const m = pending.minute
-    setSubs((s) => [...s, { minute: m, outId: pending.playerId, inId: inP ? inP.id : null, slot: slotRole, forced: true }])
-    if (inP) {
-      setStamina((st) => ({ ...st, [inP.id]: FRESH_STAMINA }))
-      setSubEvents((s) => [
+    if (!outP || subsUsed >= MAX_SUBS) {
+      setSubs((s) => [
         ...s,
-        { minute: m, type: 'sub', sub: true, text: 'Cambio obbligato per infortunio: esce ' + outP.name + ', entra ' + inP.name },
+        { minute: m, outId: pending.playerId, inId: null, slot: outP ? outP.slot || outP.role : 'MF', forced: true },
       ])
-    } else if (onField) {
-      setSubEvents((s) => [
-        ...s,
-        { minute: m, type: 'sub', sub: true, text: outP.name + ' non può continuare: cambi terminati, si resta in dieci' },
-      ])
+      if (outP) {
+        setSubEvents((s) => [
+          ...s,
+          { minute: m, type: 'sub', sub: true, text: outP.name + ' non può continuare: cambi terminati, si resta in dieci' },
+        ])
+      }
+      return
     }
+    // Cambi disponibili: pannello aperto d'ufficio, la scelta è del mister.
+    setForcedOutId(outP.id)
+    setPickOut(outP)
+    setSubsOpen(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, minute, subs])
 
@@ -303,7 +313,11 @@ export default function MatchScreen({ fixture, onDone }) {
     setMinute(FULL_TIME)
     // Salto: il risultato è quello che è; se in Coppa è pari,
     // i rigori si giocano da soli in automatico.
-    const all = [...match.baseEvents, ...eventsForResolutions(prudentAll), ...subEvents]
+    const all = [
+      ...match.baseEvents.filter((e, i) => !dismissedIdx.has(i)),
+      ...eventsForResolutions(prudentAll),
+      ...subEvents,
+    ]
     const hgAll = all.filter((e) => e.type === 'goal' && e.side === 'home').length
     const agAll = all.filter((e) => e.type === 'goal' && e.side === 'away').length
     if (fixture.type === 'cup' && hgAll === agAll) {
@@ -319,16 +333,28 @@ export default function MatchScreen({ fixture, onDone }) {
     if (!pickOut || !pickIn || subsUsed >= MAX_SUBS) return
     const m = Math.min(Math.max(1, minute), 92)
     const slotRole = pickOut.slot || pickOut.role
-    setSubs((s) => [...s, { minute: m, outId: pickOut.id, inId: pickIn.id, slot: slotRole, forced: false }])
+    const forced = pickOut.id === forcedOutId
+    setSubs((s) => [...s, { minute: m, outId: pickOut.id, inId: pickIn.id, slot: slotRole, forced }])
     setStamina((s) => ({ ...s, [pickIn.id]: FRESH_STAMINA }))
     const evs = [
-      { minute: m, type: 'sub', sub: true, text: 'Cambio: esce ' + pickOut.name + ', entra ' + pickIn.name + (affinity(pickIn.role, slotRole) < 1 ? ' — fuori ruolo' : '') },
+      {
+        minute: m,
+        type: 'sub',
+        sub: true,
+        text:
+          (forced ? 'Cambio obbligato per infortunio: esce ' : 'Cambio: esce ') +
+          pickOut.name +
+          ', entra ' +
+          pickIn.name +
+          (affinity(pickIn.role, slotRole) < 1 ? ' — fuori ruolo' : ''),
+      },
     ]
     const impact = subImpact(match.seedNumber, pickIn, m, onPitch)
     // side: senza questo campo il gol del fresco restava solo in cronaca,
     // invisibile a punteggio, classifica e statistiche del marcatore.
     if (impact) evs.push({ ...impact, side: userSide, sub: true })
     setSubEvents((s) => [...s, ...evs])
+    if (forced) setForcedOutId(null)
     setPickOut(null)
     setPickIn(null)
     setSubsOpen(false)
@@ -374,6 +400,125 @@ export default function MatchScreen({ fixture, onDone }) {
         form: true,
         text: 'Cambio modulo: ora si gioca sul ' + FORMATIONS[newFormation].name + (moreAttack ? ', più audace' : ', più prudente'),
       }])
+    }
+  }
+
+  /** Infortunio con pannello ignorato (G2.2): sceglie lo staff per
+   *  affinità di slot, come si è sempre fatto. */
+  function autoForcedSub() {
+    const outP = onPitch.find((p) => p.id === forcedOutId)
+    const benchAvail = bench.filter((p) => !subs.some((s) => s.inId === p.id))
+    const slotRole = outP && outP.slot ? outP.slot : outP ? outP.role : 'MF'
+    const inP =
+      benchAvail.slice().sort((a, b) => b.ovr * affinity(b.role, slotRole) - a.ovr * affinity(a.role, slotRole))[0] || null
+    const m = Math.min(Math.max(1, minute), 92)
+    setSubs((s) => [...s, { minute: m, outId: forcedOutId, inId: inP ? inP.id : null, slot: slotRole, forced: true }])
+    if (inP) {
+      setStamina((st) => ({ ...st, [inP.id]: FRESH_STAMINA }))
+      setSubEvents((s) => [
+        ...s,
+        {
+          minute: m,
+          type: 'sub',
+          sub: true,
+          text: 'Cambio obbligato per infortunio: esce ' + (outP ? outP.name : '') + ', entra ' + inP.name,
+        },
+      ])
+    } else {
+      setSubEvents((s) => [
+        ...s,
+        {
+          minute: m,
+          type: 'sub',
+          sub: true,
+          text: (outP ? outP.name : 'Il titolare') + ' non può continuare: si resta in dieci',
+        },
+      ])
+    }
+    setForcedOutId(null)
+    setPickOut(null)
+    setPickIn(null)
+    setSubsOpen(false)
+  }
+
+  /** Cambio mentalità in corsa (G2.2): difendere un bottino si fa da
+   *  prudenti — e se nel copione c'è ancora un gol subito, la barricata
+   *  ha una possibilità (una per partita) di toglierlo di mezzo. Da
+   *  arditi si rincorre: con il premio dell'azzardo e il rischio delle
+   *  spalle scoperte. Tutto deterministico dal seed, come sempre. */
+  function changeMentality(newM) {
+    if (newM === activeMentality || phase !== 'live') return
+    const m = Math.min(Math.max(1, minute), 92)
+    const diff = match.userIsHome ? hg - ag : ag - hg
+    const oppSide = match.userIsHome ? 'away' : 'home'
+    const rng = new Rng(seedFromString('mentchange:' + match.seedNumber + ':' + m + ':' + newM))
+    const roll = rng.float()
+    const takers = onPitch.filter((p) => p.role !== 'GK')
+    const oppXIList = match.userIsHome ? match.awayXI : match.homeXI
+    setCurrentMentality(newM)
+
+    if (newM === 'equilibrata') {
+      setSubEvents((s) => [...s, { minute: m, type: 'sub', men: true, text: 'Si torna sui binari: palla amministrata, partita gestita' }])
+      return
+    }
+    if (newM === 'prudente') {
+      if (diff > 0) {
+        const idx = match.baseEvents.findIndex(
+          (e) => e.type === 'goal' && e.side === oppSide && e.minute > m,
+        )
+        if (idx >= 0 && dismissedIdx.size === 0) {
+          const saveRng = new Rng(seedFromString('mentsave:' + match.seedNumber + ':' + m))
+          const g = match.baseEvents[idx]
+          if (saveRng.float() < 0.35) {
+            const shooter = players.find((p) => p.id === g.playerId)
+            setDismissedIdx((s) => new Set(s).add(idx))
+            setSubEvents((s) => [
+              ...s,
+              {
+                minute: g.minute,
+                type: 'chance',
+                side: oppSide,
+                men: true,
+                text:
+                  'La diga regge: il tiro di ' +
+                  (shooter ? shooter.name : 'qualcuno') +
+                  ' si ferma addosso alla linea — copione cambiato',
+              },
+            ])
+            return
+          }
+        }
+        if (roll < 0.12) {
+          setSubEvents((s) => [...s, { minute: m, type: 'chance', side: userSide, men: true, text: "La barricata si alza: cross chiusi, punizioni sporche, l'orologio gioca con te" }])
+        } else {
+          setSubEvents((s) => [...s, { minute: m, type: 'sub', men: true, text: 'Si difende con ordine: niente scene, solo punti da portare a casa' }])
+        }
+      } else if (roll < 0.05) {
+        setSubEvents((s) => [...s, { minute: m, type: 'chance', side: oppSide, men: true, text: "Prudenza che non paga: si lascia l'iniziativa e l'area trema" }])
+      } else {
+        setSubEvents((s) => [...s, { minute: m, type: 'sub', men: true, text: 'Si alza la diga: si riparte con ordine, o si muore di noia' }])
+      }
+      return
+    }
+    // Ardita: o si vince la partita, o si perde con stile.
+    if (diff < 0) {
+      if (roll < 0.14 && takers.length) {
+        const scorer = takers[rng.int(0, takers.length - 1)]
+        setSubEvents((s) => [...s, { minute: m, type: 'goal', side: userSide, playerId: scorer.id, men: true, text: 'GOL! Azzardo premiato: ' + scorer.name + ' agguanta la rimonta' }])
+      } else if (roll < 0.24) {
+        const scorer = oppXIList[rng.int(0, oppXIList.length - 1)]
+        setSubEvents((s) => [...s, { minute: m, type: 'goal', side: oppSide, playerId: scorer.id, men: true, text: 'Spalle scoperte: il raddoppio della puntata costa il contropiede di ' + scorer.name }])
+      } else {
+        setSubEvents((s) => [...s, { minute: m, type: 'sub', men: true, text: 'Si rincorre con tutti: ali da terzini, aria di rimonta' }])
+      }
+    } else if (roll < 0.08 && takers.length) {
+      const scorer = takers[rng.int(0, takers.length - 1)]
+      setSubEvents((s) => [...s, { minute: m, type: 'goal', side: userSide, playerId: scorer.id, men: true, text: 'GOL! Si raddoppia quando non serve e ' + scorer.name + ' ringrazia' }])
+    } else if (roll < 0.2) {
+      const scorer = oppXIList[rng.int(0, oppXIList.length - 1)]
+      setSubEvents((s) => [...s, { minute: m, type: 'goal', side: oppSide, playerId: scorer.id, men: true, text: 'Azzardo di troppo: spalle scoperte e ' + scorer.name + ' punisce' }])
+    } else {
+      setSubEvents((s) => [...s, { minute: m, type: 'sub', men: true, text: 'Si spinge avanti con tutto: bello, rischioso, voluto' }])
     }
   }
 
@@ -471,7 +616,7 @@ export default function MatchScreen({ fixture, onDone }) {
               <span key={hg + '-' + ag} className="animate-goal-flash shrink-0 rounded-lg border border-pitch-700 bg-pitch-800/80 px-4 py-1 text-2xl tabular-nums tracking-widest text-flood-300">{hg}-{ag}</span>
               <span className="min-w-0 flex-1 truncate">{away.name}</span>
             </div>
-            <p className="mt-1 text-center text-xs text-slate-400">{minute} minuti · recupero incluso</p>
+            <p className="mt-1 text-center text-xs text-slate-400">{minute} minuti · recupero incluso{currentMentality ? ' · mentalità: ' + (MENTALITY_LABELS[currentMentality] || currentMentality) : ''}</p>
             <div className="mt-2 h-1 rounded bg-slate-800">
               <div
                 className="h-1 rounded bg-teal-500 shadow-[0_0_8px_rgba(47,181,110,0.6)] transition-all"
@@ -482,6 +627,10 @@ export default function MatchScreen({ fixture, onDone }) {
             {phase === 'live' && subsLeft > 0 && (
               <button
                 onClick={() => {
+                  if (forcedOutId) {
+                    autoForcedSub()
+                    return
+                  }
                   setSubsOpen((o) => !o)
                   setPickOut(null)
                   setPickIn(null)
@@ -530,7 +679,7 @@ export default function MatchScreen({ fixture, onDone }) {
                   </>
                 ) : (
                   <>
-                    <p className="text-sm font-semibold">Chi entra al posto di {pickOut.name}?</p>
+                    <p className="text-sm font-semibold">Chi entra al posto di {pickOut.name}{forcedOutId === pickOut.id ? ' — infortunio, si esce per forza' : ''}?</p>
                     <ul className="mt-2 space-y-1.5">
                       {benchLeft.map((p) => (
                         <li key={p.id}>
@@ -550,15 +699,24 @@ export default function MatchScreen({ fixture, onDone }) {
                       ))}
                     </ul>
                     <div className="mt-3 flex gap-2">
-                      <button
-                        onClick={() => {
-                          setPickOut(null)
-                          setPickIn(null)
-                        }}
-                        className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-slate-500"
-                      >
-                        Indietro
-                      </button>
+                      {forcedOutId === pickOut.id ? (
+                        <button
+                          onClick={autoForcedSub}
+                          className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-slate-500"
+                        >
+                          Lo sceglie lo staff
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setPickOut(null)
+                            setPickIn(null)
+                          }}
+                          className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-slate-500"
+                        >
+                          Indietro
+                        </button>
+                      )}
                       <button
                         disabled={!pickIn}
                         onClick={makeSub}
@@ -591,6 +749,30 @@ export default function MatchScreen({ fixture, onDone }) {
                     </div>
                   )}
                   <p className="mt-1 text-[10px] text-slate-500">Il riassetto è nel seed: ogni lavagnetta in corsa porta un battito di disorganizzazione — o l'idea giusta.</p>
+                </div>
+                <div className="mt-3 border-t border-slate-800 pt-3">
+                  <p className="text-xs font-semibold text-slate-300">
+                    Mentalità · in campo ora: <span className="text-flood-300">{MENTALITY_LABELS[activeMentality] || activeMentality}</span>
+                  </p>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    {['prudente', 'equilibrata', 'ardita'].map((mm) => (
+                      <button
+                        key={mm}
+                        disabled={mm === activeMentality}
+                        onClick={() => changeMentality(mm)}
+                        className={
+                          'rounded-lg border px-2 py-2 text-xs transition disabled:opacity-40 ' +
+                          (mm === activeMentality
+                            ? 'border-flood-400 bg-flood-400/10 text-flood-200'
+                            : 'border-slate-700 text-slate-300 hover:border-flood-400/60')
+                        }
+                      >
+                        <span className="block font-semibold">{MENTALITY_LABELS[mm]}</span>
+                        <span className="block text-[10px] text-slate-500">{mm === 'prudente' ? 'Si difende il bottino' : mm === 'ardita' ? 'Si rincorre il gol' : 'Si amministra'}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">Difendere si fa da prudenti, rincorrere da arditi — il resto lo decide il seed.</p>
                 </div>
                 <p className="mt-2 text-xs text-slate-500">L'orologio continua a correre: il calcio è anche questo.</p>
               </div>
@@ -631,6 +813,7 @@ export default function MatchScreen({ fixture, onDone }) {
                   {e.qte && <span className="mr-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">QTE</span>}
                   {e.sub && <span className="mr-1 rounded bg-teal-500/20 px-1 text-[10px] text-teal-300">CAMBIO</span>}
                   {e.form && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">MODULO</span>}
+                  {e.men && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">MENTALITÀ</span>}
                   {e.type === 'pen' && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">RIG</span>}
                   {e.text}
                 </li>
@@ -671,6 +854,7 @@ export default function MatchScreen({ fixture, onDone }) {
                   {e.qte && <span className="mr-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">QTE</span>}
                   {e.sub && <span className="mr-1 rounded bg-teal-500/20 px-1 text-[10px] text-teal-300">CAMBIO</span>}
                   {e.form && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">MODULO</span>}
+                  {e.men && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">MENTALITÀ</span>}
                   {e.type === 'pen' && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">RIG</span>}
                   {e.text}
                 </li>
