@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G2 — Banco e Lavagnetta (v0.16.2): sei moduli con slot per ruolo e dazio di posizione, undici titolare scelto slot per slot dalla Lavagnetta, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo e mentalità in corsa dal pannello cambi — che si apre da solo quando qualcuno si infortuna — AI con la sua lavagnetta — sopra La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G3 — Cassa e Stadio.
+> Stato: G3 — Cassa e Stadio (v0.17.0): incassi da biglietti legati a capienza, posizione e forma, sponsor dal blasone, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G4 — Occhi sui Grandi.
 
 ## Sviluppo
 
@@ -125,6 +125,36 @@ SOLO dagli undici in campo: il gol della vittoria non lo segna più chi guardava
 dalla panchina. Le carriere in corso sopravvivono: la lavagnetta arriva con un
 default equilibrato, niente nuova carriera richiesta.
 
+## Cassa e Stadio (G3)
+
+Ogni giornata la cassa respira: chi gioca in casa incassa, tutti pagano gli
+stipendi e intascano lo sponsor. L'affluenza non è un numero tondo: capienza
+dello stadio, posizione in classifica, forma delle ultime cinque e blasone
+dell'ospite — più un pizzico di umore della curva nel seed della partita.
+Biglietti a 14 € in Divisione d'Onore, 8 in cadetta, un quarto in più per la
+Coppa; la manutenzione si paga a posto, a ogni partita in casa.
+
+- **Sponsor e stipendi**: lo sponsor vale quanto la reputazione (a ogni
+  giornata di campionato), gli stipendi sono il monte ingaggi diviso in 38
+  rate. Il calcolo vale per tutta la lega: anche i club AI vivono di incassi.
+- **Ampliamento dello stadio**: a scaglioni da 4.000 posti, costo crescente a
+  ogni lavoro (4M + 2M a scaglione in massima, 1M + 0,5M in cadetta). Quanti
+  lavori regge la struttura lo dice il livello dello stadio nelle strutture.
+- **Prestiti seppi**: nel mercato a finestra aperta puoi chiedere un prestito
+  secco — fino a fine stagione, poi il giocatore torna a casa. Il proprietario
+  accetta solo se ha avanzo in quel ruolo, se il giocatore non è tra i suoi
+  due migliori nel ruolo e se il seed gli dice sì (80%). Costo: il 10% del
+  valore, massimo due prestiti in rosa, niente vendita della roba degli altri.
+- **La Federazione guarda il rosso**: cassa sotto zero, mercato bloccato e
+  morale che scende di due a ogni giornata passata in rosso. La prima volta
+  arriva la lettera (Comunicato ufficiale — Amministrazione sorvegliata). A
+  fine stagione il rosso costa punti in classifica: uno ogni 1.500.000 € di
+  debito, fino a quindici — e la classifica finale si riscrive: campionato,
+  promosse e retrocessioni compresi. Chiudete in nero, mister.
+
+Le carriere in corso sopravvivono: il registro della cassa arriva con la
+migrazione al primo caricamento e i conti partono dalla stagione in corso.
+
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -158,7 +188,7 @@ Serie G — prima dell'app Android:
 
 - [x] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
 - [x] G2 — Banco e Lavagnetta: sei moduli con slot per ruolo e dazio di posizione, matchup tra moduli, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo e mentalità in corsa, pannello cambi automatico sull'infortunio, undici titolare scelto slot per slot
-- [ ] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, prestiti
+- [x] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, stadio ampliabile a scaglioni, prestiti seppi, penalità federali per il rosso
 - [ ] G4 — Occhi sui Grandi: osservatori anche sui seniori avversari, attributi stimati finché non scoutati
 - [ ] G5 — Il Mercato degli Allenatori: club AI che licenziano per i risultati, candidature e offerte di lavoro, albo d'oro e storia della lega
 - [ ] F7 — Capacitor (app vera)
