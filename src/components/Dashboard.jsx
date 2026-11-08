@@ -663,6 +663,9 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               <button onClick={onNewCareer} className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-pitch-950 hover:bg-teal-400">
                 Nuova carriera
               </button>
+              <button onClick={() => onSwitchCareer()} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-teal-500">
+                Torna alla home
+              </button>
               <button onClick={handleDelete} className="rounded-lg border border-red-500/50 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10">
                 Elimina questa carriera
               </button>

@@ -10,10 +10,15 @@ const DURATIONS = {
   long: 'Cronaca estesa (7-8 min)',
 }
 
-export default function SetupScreen({ onStart }) {
+export default function SetupScreen({ onStart, onBack }) {
   const [coachName, setCoachName] = useState('')
   const [seedText, setSeedText] = useState('ELEVEN-CASA')
-  const [duration, setDuration] = useState('normal')
+  // Il default della home sopravvive alle sessioni: ogni nuovo mister
+  // parte dalla durata scelta l'ultima volta.
+  const [duration, setDuration] = useState(() => {
+    const v = window.localStorage.getItem('pitchtory-default-duration')
+    return v === 'short' || v === 'long' || v === 'normal' ? v : 'normal'
+  })
   const [seed, setSeed] = useState(null)
   const [universe, setUniverse] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
@@ -30,6 +35,8 @@ export default function SetupScreen({ onStart }) {
   async function start() {
     if (!selectedId || saving) return
     setSaving(true)
+    // La durata scelta qui diventa il default della prossima carriera.
+    window.localStorage.setItem('pitchtory-default-duration', duration)
     const id = await createCareer({
       seed,
       seedText: seedText.trim() || null,
@@ -44,6 +51,9 @@ export default function SetupScreen({ onStart }) {
     <main className="min-h-screen bg-pitch-950 p-4 text-slate-100 max-w-5xl mx-auto sm:p-8">
       <div className="pointer-events-none fixed left-1/2 top-0 h-44 w-[28rem] -translate-x-1/2 rounded-full bg-flood-400/10 blur-3xl" />
       <header className="mb-8">
+        {onBack && (
+          <button onClick={onBack} className="mb-3 text-xs text-slate-400 hover:text-slate-200">← Torna alla home</button>
+        )}
         <p className="scoreboard text-[10px] tracking-[0.35em] text-flood-400">Little Elsewhere</p>
         <h1 className="scoreboard text-4xl font-semibold tracking-wide text-flood-300">Pitchtory</h1>
         <p className="text-sm text-slate-400">Build your own legacy — nuova carriera</p>
