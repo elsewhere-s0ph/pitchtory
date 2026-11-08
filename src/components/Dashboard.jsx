@@ -1,5 +1,6 @@
 
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
@@ -224,13 +225,18 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
     if (!fixture) return
     try {
       const isCup = fixture.type === "cup"
-      // La Coppa non ammette pari: servono i rigori, subito.
+      // La Coppa non ammette pari: i rigori li ha già giocati il MatchScreen,
+      // qui si firma il verdetto (il cupShootout resta per le partite saltate).
       let finalResult = result
       let cupWinnerId = undefined
       if (isCup && result.homeGoals === result.awayGoals) {
-        const pens = cupShootout(career, fixture, clubById[fixture.homeId], clubById[fixture.awayId], playersByClub)
-        cupWinnerId = pens.winnerId
-        finalResult = { ...result, cupWinnerId, events: [...result.events, pens.event] }
+        if (result.cupWinnerId !== undefined) {
+          cupWinnerId = result.cupWinnerId
+        } else {
+          const pens = cupShootout(career, fixture, clubById[fixture.homeId], clubById[fixture.awayId], playersByClub)
+          cupWinnerId = pens.winnerId
+          finalResult = { ...result, cupWinnerId, events: [...result.events, pens.event] }
+        }
       } else if (isCup) {
         cupWinnerId = result.homeGoals > result.awayGoals ? fixture.homeId : fixture.awayId
       }
@@ -424,7 +430,10 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                   <span className="w-10 text-xs text-slate-500" title={f.type === "cup" ? (CUP_ROUNDS[f.round] || "Turno " + f.round) : ""}>{f.type === "cup" ? "Coppa" : "G" + f.number}</span>
                   <span className="flex-1">{(home ? 'vs ' : '@ ') + opp}</span>
                   {f.played ? (
-                    <span className="w-12 text-right font-bold tabular-nums">
+                    <span
+                      className={'w-12 text-right font-bold tabular-nums ' + (f.type === 'cup' && f.homeGoals === f.awayGoals ? 'text-flood-300' : '')}
+                      title={f.type === 'cup' && f.homeGoals === f.awayGoals && clubById[f.winnerId] ? 'Dopo i rigori: passa il ' + clubById[f.winnerId].name : null}
+                    >
                       {home ? f.homeGoals + '-' + f.awayGoals : f.awayGoals + '-' + f.homeGoals}
                     </span>
                   ) : (
