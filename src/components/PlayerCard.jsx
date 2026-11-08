@@ -1,5 +1,5 @@
 import { OVR_WEIGHTS, ATTR_LABELS } from '../game/attributes'
-import { scoutedPotential } from '../game/scouting'
+import { scoutedPotential, scoutedOvr, scoutedAttrs, seniorScoutError, SCOUT_REPORT_COST } from '../game/scouting'
 import { ABILITIES, RARITY_LABEL } from '../game/abilities'
 
 const ROLE_LABELS = { GK: 'Portiere', DF: 'Difensore', MF: 'Centrocampista', FW: 'Attaccante' }
@@ -31,8 +31,13 @@ function AttrRow({ label, value }) {
 
 /** Scheda giocatore: attributi 1-20, contratto, statistiche di stagione,
  * stima del potenziale per la Primavera. Si apre tappando un nome in Rosa. */
-export default function PlayerCard({ player, scouts, round, onClose }) {
-  const attrs = player.attributes || {}
+export default function PlayerCard({ player, scouts, round, onClose, reveal = true }) {
+  // Occhi sui Grandi (G4): senza report la scheda di un avversario è
+  // una lettura a occhio — stime al posto della verità, finché la rete
+  // non va a vedere di persona.
+  const est = !reveal
+  const attrs = est ? scoutedAttrs(player, scouts) : (player.attributes || {})
+  const shownOvr = est ? scoutedOvr(player, scouts) : player.ovr
   const w = OVR_WEIGHTS[player.role] || OVR_WEIGHTS.MF
   const keys = [...Object.keys(w), ...(player.role === 'GK' ? ['speed'] : [])].filter(
     (k, i, a) => a.indexOf(k) === i,
@@ -61,8 +66,8 @@ export default function PlayerCard({ player, scouts, round, onClose }) {
             </p>
           </div>
           <div className="shrink-0 text-center">
-            <p className="text-4xl font-bold tabular-nums text-flood-300">{player.ovr}</p>
-            <p className="text-[10px] uppercase text-slate-500">Overall</p>
+            <p className="text-4xl font-bold tabular-nums text-flood-300">{est ? '~' + shownOvr : shownOvr}</p>
+            <p className="text-[10px] uppercase text-slate-500">{est ? 'Overall stimato' : 'Overall'}</p>
           </div>
         </div>
 
@@ -86,6 +91,13 @@ export default function PlayerCard({ player, scouts, round, onClose }) {
           )}
         </ul>
 
+        {est && (
+          <p className="mt-3 rounded-lg border border-slate-800 bg-pitch-950/60 px-3 py-2 text-xs text-slate-400">
+            Lettura a occhio dei tuoi osservatori: ±{seniorScoutError(scouts)} OVR, attributi stimati, abilità coperte.
+            Un report ({fmtMoney(SCOUT_REPORT_COST)}, dal tab Mercato) dice la verità — e non si scorda più.
+          </p>
+        )}
+
         {player.youth && (
           <p className="mt-3 rounded-lg border border-slate-800 bg-pitch-950/60 px-3 py-2 text-xs text-slate-400">
             Potenziale stimato dai tuoi osservatori: <b className="text-teal-300">~{scoutedPotential(player, scouts)}</b>
@@ -93,7 +105,7 @@ export default function PlayerCard({ player, scouts, round, onClose }) {
           </p>
         )}
 
-        {Array.isArray(player.abilities) && player.abilities.length > 0 && (
+        {!est && Array.isArray(player.abilities) && player.abilities.length > 0 && (
           <div className="mt-3">
             <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">Abilità speciali</h3>
             <div className="flex flex-wrap gap-1.5">
