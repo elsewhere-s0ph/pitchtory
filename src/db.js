@@ -328,6 +328,17 @@ export async function setTactics(careerId, tactics) {
   return next
 }
 
+/** L'undici scelto dal mister (G2.1): undici id allineati agli slot del
+ *  modulo, null dove decide lo staff. Chi non è più della rosa, chi è
+ *  in infermeria e chi è squalificato lo ignora il motore: la lavagnetta
+ *  non costringe mai a giocare in dieci. */
+export async function setLineup(careerId, lineup) {
+  const career = await db.careers.get(careerId)
+  if (!career) return
+  await db.careers.update(careerId, { lineup: lineup || null })
+  return lineup || null
+}
+
 export async function deleteCareer(id) {
   await db.transaction('rw', db.careers, db.clubs, db.players, db.fixtures, async () => {
     await db.careers.delete(id)
