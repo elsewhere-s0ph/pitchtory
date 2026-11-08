@@ -137,9 +137,9 @@ Coppa; la manutenzione si paga a posto, a ogni partita in casa.
 - **Sponsor e stipendi (v0.18.0)**: lo sponsor si cerca a inizio stagione —
   un pool di offerte (da 3 a 8) costruito sul blasone e sui risultati della
   stagione appena chiusa: più si vince, più ne arrivano. La base si incassa
-  alla firma, il bonus solo se l obiettivo arriva a fine stagione — e le
+  alla firma, il bonus solo se l'obiettivo arriva a fine stagione — e le
   cifre stanno al posto del club: a chi lotta per la salvezza nessuno offre
-  lo scudetto, si offeriscono salvezza e promozione. I club AI firmano da
+  lo scudetto, si offrono salvezza e promozione. I club AI firmano da
   soli. Gli stipendi sono il monte ingaggi in 38 rate e in scheda si legge
   lo stipendio di stagione. Il calcolo vale per tutta la lega: anche i club
   AI vivono di incassi.
@@ -162,8 +162,6 @@ Le carriere in corso sopravvivono: il registro della cassa arriva con la
 migrazione al primo caricamento, i conti partono dalla stagione in corso e
 la prima trattativa sponsor apre al primo giro. Senza firma, la Federazione
 non fa scendere in campo nessuno: prima il nome sul petto, poi il calcio.
-
-## Stack
 
 ## Stack
 
