@@ -2,6 +2,7 @@
 
 
 
+
 import Dexie from 'dexie'
 import { generateUniverse, playerValue, LEAGUES } from './game/universe'
 import { generateSchedule } from './game/schedule'
@@ -12,6 +13,7 @@ import { aiTransferDeals } from './game/market'
 import { assignLeagueAbilities, abilityValueBonus } from './game/abilities'
 import { Rng, seedFromString } from './lib/rng'
 import { simulateMatch, matchSeed, matchSeedNumber, teamStrength } from './game/engine'
+import { DEFAULT_TACTICS } from './game/tactics'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -201,6 +203,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     clubId,
     season: universe.season,
     settings: { matchDuration },
+    tactics: { ...DEFAULT_TACTICS },
     universeVersion: UNIVERSE_VERSION,
     scouts: { level: 1, focus: null },
     trophies: [],
@@ -289,6 +292,14 @@ export async function loadCareer(id) {
     await db.careers.update(id, { scouts: career.scouts })
   }
 
+  // Migrazione lazy (G2): la lavagnetta della carriera. Chi non ha
+  // tattiche salvate parte dal classico equilibrato — la carriera
+  // continua identica a come l'hai lasciata.
+  if (!career.tactics) {
+    career.tactics = { ...DEFAULT_TACTICS }
+    await db.careers.update(id, { tactics: career.tactics })
+  }
+
   return { career, clubs, players, fixtures }
 }
 
@@ -306,6 +317,15 @@ export async function listCareers() {
 
 export async function updateCareerSettings(id, settings) {
   await db.careers.update(id, { settings })
+}
+
+/** La lavagnetta del mister (G2): modulo, mentalità, pressing e linea. */
+export async function setTactics(careerId, tactics) {
+  const career = await db.careers.get(careerId)
+  if (!career) return
+  const next = { ...DEFAULT_TACTICS, ...(career.tactics || {}), ...tactics }
+  await db.careers.update(careerId, { tactics: next })
+  return next
 }
 
 export async function deleteCareer(id) {
