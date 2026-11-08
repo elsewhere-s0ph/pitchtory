@@ -2,6 +2,7 @@
 
 
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, bestXI, subImpact } from '../game/engine'
@@ -9,6 +10,7 @@ import { Rng } from '../lib/rng'
 import { hasAbility } from '../game/abilities'
 import { LEAGUES } from '../game/universe'
 import { CUP_NAME, CUP_ROUNDS } from '../db'
+import PensShootout from './PensShootout'
 
 /** Millisecondi per minuto simulato, per durata partita configurata. */
 const MS_PER_MINUTE = { short: 800, normal: 3500, long: 4700 }
@@ -27,6 +29,7 @@ function eventClass(e) {
   if (e.type === 'red') return 'border-red-500/40 bg-red-500/10 text-red-300'
   if (e.type === 'injury') return 'border-red-500/30 bg-red-500/5 text-red-200/90'
   if (e.type === 'card') return 'border-amber-500/30 bg-amber-500/5 text-amber-200/80'
+  if (e.type === 'pen') return 'border-flood-400/40 bg-flood-400/5 text-flood-200'
   return 'border-slate-800 bg-pitch-900/40 text-slate-300'
 }
 
@@ -59,6 +62,8 @@ export default function MatchScreen({ fixture, onDone }) {
   const [subsOpen, setSubsOpen] = useState(false)
   const [pickOut, setPickOut] = useState(null)
   const [pickIn, setPickIn] = useState(null)
+  const [pensResult, setPensResult] = useState(null)
+  const [pensAuto, setPensAuto] = useState(false)
 
   const clubById = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c])), [clubs])
   const playersByClub = useMemo(() => {
@@ -127,21 +132,22 @@ export default function MatchScreen({ fixture, onDone }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minute])
 
-  /** Eventi generati dalle scelte QTE risolte. */
-  const momentEvents = useMemo(() => {
+  /** Eventi generati dalle scelte QTE (la funzione serve anche al salto). */
+  function eventsForResolutions(resMap) {
     const userSide = match.userIsHome ? 'home' : 'away'
     const oppSide = match.userIsHome ? 'away' : 'home'
     return match.keyMoments
-      .filter((m) => resolved[m.id] !== undefined)
+      .filter((m) => resMap[m.id] !== undefined)
       .map((m) => {
-        const outcome = m.options[resolved[m.id]].outcome
+        const outcome = m.options[resMap[m.id]].outcome
         const ev = { minute: m.minute, text: outcome.text, qte: true }
         if (outcome.goal) return { ...ev, side: userSide, type: 'goal', playerId: outcome.playerId }
         if (outcome.goalAgainst) return { ...ev, side: oppSide, type: 'goal', playerId: outcome.playerId }
         if (outcome.card) return { ...ev, side: userSide, type: 'card', playerId: outcome.playerId }
         return { ...ev, side: userSide, type: 'chance' }
       })
-  }, [match, resolved])
+  }
+  const momentEvents = useMemo(() => eventsForResolutions(resolved), [match, resolved])
 
   const allEvents = useMemo(
     () => [...match.baseEvents, ...momentEvents, ...subEvents].sort((a, b) => a.minute - b.minute),
@@ -179,7 +185,11 @@ export default function MatchScreen({ fixture, onDone }) {
       return
     }
     if (minute >= FULL_TIME) {
-      setPhase('end')
+      // La Coppa non ammette pari: se i minuti non bastano, si va ai rigori.
+      const hgAll = allEvents.filter((e) => e.type === 'goal' && e.side === 'home').length
+      const agAll = allEvents.filter((e) => e.type === 'goal' && e.side === 'away').length
+      if (fixture.type === 'cup' && hgAll === agAll) setPhase('pens')
+      else setPhase('end')
       return
     }
     const id = setTimeout(() => setMinute((m) => m + 1), MS_PER_MINUTE[career.settings.matchDuration] || 3500)
@@ -252,7 +262,17 @@ export default function MatchScreen({ fixture, onDone }) {
     for (const m of match.keyMoments) prudentAll[m.id] = Math.max(0, m.options.findIndex((o) => o.prudent))
     setResolved(prudentAll)
     setMinute(FULL_TIME)
-    setPhase('end')
+    // Salto: il risultato è quello che è; se in Coppa è pari,
+    // i rigori si giocano da soli in automatico.
+    const all = [...match.baseEvents, ...eventsForResolutions(prudentAll), ...subEvents]
+    const hgAll = all.filter((e) => e.type === 'goal' && e.side === 'home').length
+    const agAll = all.filter((e) => e.type === 'goal' && e.side === 'away').length
+    if (fixture.type === 'cup' && hgAll === agAll) {
+      setPensAuto(true)
+      setPhase('pens')
+    } else {
+      setPhase('end')
+    }
   }
 
   /** Effettua un cambio: annuncio in cronaca + eventuale impatto deterministico del fresco. */
@@ -295,9 +315,17 @@ export default function MatchScreen({ fixture, onDone }) {
   const finalResult = {
     homeGoals: allEvents.filter((e) => e.type === 'goal' && e.side === 'home').length,
     awayGoals: allEvents.filter((e) => e.type === 'goal' && e.side === 'away').length,
-    events: allEvents,
+    events: pensResult ? [...allEvents, ...pensResult.events] : allEvents,
     minutesPlayed,
+    ...(pensResult ? { cupWinnerId: pensResult.cupWinnerId } : {}),
   }
+
+  /** Rigori (Coppa): tiratori e portieri per la sfida dal dischetto. */
+  const userClub = match.userIsHome ? home : away
+  const oppClub = match.userIsHome ? away : home
+  const oppXI = bestXI((fitPlayersByClub[oppClub.id] || []).filter((p) => !p.youth))
+  const userGk = onPitch.find((p) => p.role === 'GK') || xi.find((p) => p.role === 'GK') || onPitch[0]
+  const oppGk = oppXI.find((p) => p.role === 'GK') || oppXI[0]
 
   return (
     <div className="fixed inset-0 z-10 overflow-y-auto bg-pitch-950">
@@ -478,6 +506,7 @@ export default function MatchScreen({ fixture, onDone }) {
                   <span className="mr-2 text-xs text-slate-500">{e.minute}'</span>
                   {e.qte && <span className="mr-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">QTE</span>}
                   {e.sub && <span className="mr-1 rounded bg-teal-500/20 px-1 text-[10px] text-teal-300">CAMBIO</span>}
+                  {e.type === 'pen' && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">RIG</span>}
                   {e.text}
                 </li>
               ))}
@@ -485,16 +514,38 @@ export default function MatchScreen({ fixture, onDone }) {
           </div>
         )}
 
+        {phase === 'pens' && (
+          <PensShootout
+            seedNumber={match.seedNumber}
+            userIsHome={match.userIsHome}
+            userClub={userClub}
+            oppClub={oppClub}
+            userTakers={onPitch}
+            oppTakers={oppXI}
+            userGk={userGk}
+            oppGk={oppGk}
+            auto={pensAuto}
+            onComplete={(res) => {
+              setPensResult(res)
+              setPhase('end')
+            }}
+          />
+        )}
+
         {phase === 'end' && (
           <div className="mt-8 space-y-6 text-center">
             <p className="scoreboard animate-goal-flash inline-block rounded-lg px-4 text-5xl font-bold tabular-nums tracking-widest text-flood-300">{finalResult.homeGoals}-{finalResult.awayGoals}</p>
+            {pensResult && (
+              <p className="text-sm text-flood-300">Rigori: {pensResult.homePens}-{pensResult.awayPens} — passa il {(pensResult.cupWinnerId === home.id ? home : away).name}</p>
+            )}
             <p className="text-sm text-slate-400">{home.name} — {away.name}</p>
             <ul className="mx-auto max-w-sm space-y-2 text-left">
-              {allEvents.map((e, i) => (
+              {finalResult.events.map((e, i) => (
                 <li key={i} className="text-sm">
                   <span className="mr-2 text-xs text-slate-500">{e.minute}'</span>
                   {e.qte && <span className="mr-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">QTE</span>}
                   {e.sub && <span className="mr-1 rounded bg-teal-500/20 px-1 text-[10px] text-teal-300">CAMBIO</span>}
+                  {e.type === 'pen' && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">RIG</span>}
                   {e.text}
                 </li>
               ))}
