@@ -119,3 +119,119 @@ export function loanDeal(seed, season, p, ownerSquad) {
   const fee = Math.max(100000, Math.round((p.value * LOAN_FEE_RATE) / 10000) * 10000)
   return { ok: true, fee }
 }
+/** Sponsor della stagione (G3.1): niente piu fisso per giornata. Ogni
+ *  inizio stagione il club cerca chi gli metta la faccia sulla maglia:
+ *  un pool di offerte dove contano il blasone e i risultati appena
+ *  collezionati. Chi ha vinto riceve piu telefonate; chi e finito in
+ *  fondo riceve offerte da fine classifica, con bonus che si possono
+ *  davvero promettere. La base si incassa alla firma, il bonus solo
+ *  se a fine stagione l obiettivo e arrivato. Tutto nel seed, sempre. */
+const SPONSOR_CATEGORIES = [
+  "Salumificio", "Caseificio", "Mobilificio", "Conceria", "Cartiera", "Torrefazione",
+  "Enoteca", "Autosalone", "Pastificio", "Cantina sociale", "Ferriera", "Falegnameria",
+  "Officina meccanica", "Studio tecnico", "Consorzio di credito", "Latteria",
+]
+const SPONSOR_SUFFIXES = [
+  "Fratelli Bonanni", "del Valmerla", "Petrarossa & C.", "di Malveglia", "Dossarese",
+  "Cavarnina", "Litornese", "Rivarotonda", "Ostricana", "del Piave", "Bellavista",
+  "Alpina", "del Ponte", "Torrese",
+]
+const SPONSOR_OBJECTIVES = {
+  title: { label: "Vittoria del campionato", k: 1.9 },
+  top4: { label: "Primi quattro in Divisione d'Onore", k: 0.85 },
+  cupwin: { label: "Coppa Nazionale Trofeo Bellandi alzata", k: 1.25 },
+  tophalf: { label: "Meta alta della classifica (primi dieci)", k: 0.45 },
+  salvezza: { label: "Salvezza raggiunta (diciottesimo posto o meglio)", k: 0.8 },
+  promotion: { label: "Promozione in Divisione d'Onore", k: 2.1 },
+  none: { label: null, k: 0 },
+}
+
+/** Chi puo promettere cosa: il blasone decide con quali obiettivi si
+ *  apre la trattativa. Nessuno offre lo scudetto a chi lotta per non
+ *  annegare; e in cadetta la salvezza non si vende, perche da lì non
+ *  si scende. Lì si vende il sogno della promozione. */
+function eligibleObjectives(club) {
+  const rep = club.reputation || 40
+  if (club.leagueId === 'a') {
+    return rep >= 60
+      ? [['promotion', 3], ['cupwin', 1], ['tophalf', 2], ['none', 1]]
+      : [['promotion', 1], ['tophalf', 3], ['cupwin', 1], ['none', 1]]
+  }
+  if (rep >= 72) return [['title', 3], ['top4', 3], ['cupwin', 2], ['tophalf', 1], ['none', 1]]
+  if (rep >= 60) return [['title', 1], ['top4', 3], ['cupwin', 2], ['tophalf', 3], ['none', 1]]
+  return [['salvezza', 3], ['tophalf', 2], ['cupwin', 1], ['none', 2]]
+}
+
+function weightedPick(rng, entries) {
+  const total = entries.reduce((s, e) => s + e[1], 0)
+  let roll = rng.float() * total
+  for (const e of entries) {
+    roll -= e[1]
+    if (roll <= 0) return e[0]
+  }
+  return entries[entries.length - 1][0]
+}
+
+/** Il pool di sponsor della stagione: piu blasone e piu risultati,
+ *  piu offerte sul tavolo (da 3 a 8). La base segue la reputazione,
+ *  il bonus e un multiplo della base secondo l obiettivo. */
+export function makeSponsorOffers(seed, season, club, lastSeason) {
+  if (!club) return []
+  const rng = new Rng(seedFromString(seed + ':sponsor:' + season + ':' + club.id))
+  const rep = club.reputation || 40
+  const won = lastSeason || {}
+  let count = 3 + Math.floor((rep - 40) / 12)
+  if (won.champion) count += 2
+  if (won.cupWinner) count += 1
+  if (won.promoted) count += 1
+  count = Math.max(3, Math.min(8, count))
+  const eligible = eligibleObjectives(club)
+  const offers = []
+  for (let i = 0; i < count; i++) {
+    const type = weightedPick(rng, eligible)
+    const obj = SPONSOR_OBJECTIVES[type]
+    const baseRate = 16000 + rng.float() * 14000
+    let base = Math.max(200000, Math.round((rep * baseRate) / 50000) * 50000)
+    let bonus = 0
+    if (type === 'none') {
+      base = Math.round((base * (1.2 + rng.float() * 0.3)) / 50000) * 50000
+    } else {
+      bonus = Math.max(100000, Math.round((base * obj.k * (0.85 + rng.float() * 0.3)) / 50000) * 50000)
+    }
+    let name = rng.pick(SPONSOR_CATEGORIES) + ' ' + rng.pick(SPONSOR_SUFFIXES)
+    if (offers.some((o) => o.name === name)) name = name + ' — filiale n. ' + (i + 1)
+    offers.push({ name, base, bonus, objective: type, objectiveLabel: obj.label })
+  }
+  return offers
+}
+
+/** Il direttore sportivo AI sceglie da solo: la base e certa, il bonus
+ *  vale meta — i sogni si scontano del 50 per cento. */
+export function bestSponsorOffer(offers) {
+  let best = null
+  let bestValue = -1
+  for (const o of offers || []) {
+    const value = (o.base || 0) + (o.bonus || 0) * 0.5
+    if (value > bestValue) {
+      best = o
+      bestValue = value
+    }
+  }
+  return best
+}
+
+/** Il bonus maturato: gli obiettivi si contano sulla classifica finale
+ *  (penalita comprese: la Federazione non regala nulla agli sponsor). */
+export function sponsorBonus(deal, ctx) {
+  if (!deal || !deal.objective || deal.objective === 'none' || !ctx) return 0
+  const pos = ctx.position || 20
+  const hit =
+    deal.objective === 'title' ? !!ctx.champion
+    : deal.objective === 'top4' ? pos <= 4
+    : deal.objective === 'tophalf' ? pos <= 10
+    : deal.objective === 'salvezza' ? pos <= 18
+    : deal.objective === 'promotion' ? !!ctx.promoted
+    : deal.objective === 'cupwin' ? !!ctx.cupWinner
+    : false
+  return hit ? (deal.bonus || 0) : 0
+}
