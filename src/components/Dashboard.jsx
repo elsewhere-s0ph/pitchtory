@@ -7,7 +7,7 @@ import { useCareer } from '../store'
 import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, signSponsor, applyForJob, takeJob, declineOffer, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
 import { expansionInfo } from '../game/finance'
 import { seatHeat } from '../game/jobs'
-import { scoutedPotential, scoutError } from '../game/scouting'
+import { scoutedPotential, scoutError, seniorScoutError, SCOUT_REPORT_COST } from '../game/scouting'
 import { computeStandings } from '../game/standings'
 import { LEAGUES } from '../game/universe'
 import { simulateMatch, matchSeed } from '../game/engine'
@@ -843,6 +843,9 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               <p className="mt-2 text-xs text-slate-400">
                 Margine di errore sulle stime: ±{scoutError(scouts)} OVR.
                 {scouts.focus ? ' Focus su ' + ROLE_LABELS[scouts.focus].toLowerCase() + '.' : ' Nessun focus: si guarda tutto, male.'}
+              </p>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                Occhi sui Grandi: anche i seniori avversari si leggono a occhio — nel mercato l'OVR è una stima (±{seniorScoutError(scouts)}) e le abilità restano coperte. Un report da {fmtMoney(SCOUT_REPORT_COST)} dice la verità su un uomo solo, e non si scorda più.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {[['GK', 'Portieri'], ['DF', 'Difensori'], ['MF', 'Centrocampisti'], ['FW', 'Attaccanti'], [null, 'Nessuno']].map(([f, l]) => (
