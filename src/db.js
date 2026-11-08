@@ -15,6 +15,7 @@ import { Rng, seedFromString } from './lib/rng'
 import { simulateMatch, matchSeed, matchSeedNumber, teamStrength } from './game/engine'
 import { DEFAULT_TACTICS } from './game/tactics'
 import { matchdayGate, wagesPerRound, expansionInfo, penaltyPoints, federationMail, makeSponsorOffers, bestSponsorOffer, sponsorBonus } from './game/finance'
+import { managerNameFor, sackProb, offerChance, applyProb } from './game/jobs'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -222,7 +223,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
   })
 
   await db.transaction('rw', db.clubs, db.players, db.fixtures, async () => {
-    await db.clubs.bulkAdd(universe.clubs.map((c) => ({ key: careerId + ':' + c.id, careerId, ...c })))
+    await db.clubs.bulkAdd(universe.clubs.map((c) => ({ key: careerId + ':' + c.id, careerId, manager: c.id === clubId ? null : managerNameFor(seed, c.id, 0), ...c })))
     await db.players.bulkAdd(universe.players.map((p) => ({
       key: careerId + ':' + p.id,
       careerId,
@@ -348,6 +349,23 @@ export async function loadCareer(id) {
     career.finance.aiSponsors = aiSponsors
     career.finance.sponsor = career.finance.sponsor || null
     await db.careers.update(id, { finance: career.finance })
+  }
+
+  // Migrazione lazy (G5.1): il mercato delle panchine. Ogni club AI ha il
+  // suo mister dal seed; la panchina del club del mister resta senza nome,
+  // perché là siede l'utente.
+  if (!career.jobs) {
+    career.jobs = { offers: [], applied: [], invited: [], notices: [] }
+    await db.careers.update(id, { jobs: career.jobs })
+  }
+  const noManager = clubs.filter((c) => c.id !== career.clubId && typeof c.manager !== 'string')
+  if (noManager.length) {
+    await db.transaction('rw', db.clubs, async () => {
+      for (const c of noManager) {
+        if (!c.key) continue
+        await db.clubs.update(c.key, { manager: managerNameFor(career.seed, c.id, 0) })
+      }
+    })
   }
 
   return { career, clubs, players, fixtures }
@@ -482,6 +500,80 @@ export async function settleRound(careerId, number) {
     fin.rounds = [...(fin.rounds || []), row]
     await db.careers.update(careerId, { finance: fin })
   })
+
+  // Panchine a rischio (G5.1): ogni giornata guarda chi scotta. I club
+  // esonerano in corsa, le panchine restano libere e il telefono del
+  // mister squilla. Tutto dal seed: le sedie traballano in modo
+  // deterministico, come ogni altra disgrazia di questo campionato.
+  if (isLeagueRound) {
+    const jobs = career.jobs || { offers: [], applied: [], invited: [], notices: [] }
+    const jrng = new Rng(seedFromString(career.seed + ':jobs:' + career.season + ':' + number))
+    const clubUpdates = []
+    const notices = [...(jobs.notices || [])]
+    const newOffers = []
+    let userSacked = false
+    const userClubEntry = clubs.find((c) => c.id === career.clubId) || null
+    const trophies = (career.trophies || []).length
+    for (const c of clubs) {
+      if (c.id === career.clubId) {
+        // La sedia del mister scotta solo se la classifica va davvero male.
+        if (number >= 12) {
+          const pos = positionOf(c.id)
+          const form = formOf(c.id)
+          if (jrng.chance(sackProb(c, pos, form, true))) {
+            userSacked = true
+            clubUpdates.push({ key: c.key, patch: { manager: managerNameFor(career.seed, c.id, (c.hires || 0) + 1), hires: (c.hires || 0) + 1 } })
+            notices.push({ round: number, kind: 'esonero', text: 'ESONERO — La dirigenza del ' + c.name + ' ringrazia per il lavoro e comunica la rescissione: la sedia scottava da troppo. Le valigie sono davanti alla porta.' })
+          }
+        }
+        continue
+      }
+      if (!c.manager) {
+        // Panchina libera: dopo due giornate il club assume chi trova.
+        if ((c.sackRound || 0) <= number - 2 && jrng.chance(0.45)) {
+          clubUpdates.push({ key: c.key, patch: { manager: managerNameFor(career.seed, c.id, (c.hires || 0) + 1), hires: (c.hires || 0) + 1, sackRound: null } })
+          notices.push({ round: number, kind: 'assunzione', text: 'Il ' + c.name + ' ha trovato un nuovo mister: la panchina è di nuovo occupata.' })
+        }
+        continue
+      }
+      if (number < 10) continue
+      const pos = positionOf(c.id)
+      const form = formOf(c.id)
+      if (!jrng.chance(sackProb(c, pos, form, false))) continue
+      clubUpdates.push({ key: c.key, patch: { manager: null, sackRound: number } })
+      notices.push({ round: number, kind: 'esonero', text: 'Il ' + c.name + ' ha esonerato ' + c.manager + ': la classifica non perdona e la panchina paga il conto.' })
+      const chance = userClubEntry ? offerChance(c, userClubEntry, trophies) : offerChance(c, null, trophies)
+      if (jrng.chance(chance)) {
+        newOffers.push({
+          clubId: c.id,
+          round: number,
+          text: userClubEntry
+            ? 'Il ' + c.name + ' ha licenziato e ha il tuo numero: cercano un mister che sappia il fatto suo, anche a stagione in corso.'
+            : 'Il ' + c.name + ' ha chiamato proprio te: panchina libera, stipendio vero, squadra arrabbiata.',
+        })
+      }
+    }
+    const willHire = new Set(clubUpdates.filter((u) => u.patch.manager).map((u) => u.key))
+    const offersNow = [
+      ...(jobs.offers || []).filter((o) => {
+        const target = clubs.find((c) => c.id === o.clubId)
+        return target && !target.manager && !willHire.has(target.key)
+      }),
+      ...newOffers,
+    ]
+    await db.transaction('rw', db.careers, db.clubs, async () => {
+      for (const u of clubUpdates) await db.clubs.update(u.key, u.patch)
+      await db.careers.update(careerId, {
+        jobs: { offers: offersNow, applied: (jobs.applied || []), invited: (jobs.invited || []), notices: notices.slice(-40) },
+      })
+      if (userSacked) {
+        await db.careers.update(careerId, {
+          clubId: null,
+          sacked: { season: career.season, round: number, clubId: userClubEntry ? userClubEntry.id : null, clubName: userClubEntry ? userClubEntry.name : '' },
+        })
+      }
+    })
+  }
 }
 
 /** Amplia lo stadio (G3): a scaglioni, a soldi sonanti. Quanti lavori si
@@ -548,6 +640,76 @@ export async function signSponsor(careerId, offerIndex) {
     await db.careers.update(careerId, { finance: { ...fin, sponsor: deal } })
   })
   return deal
+}
+
+/** Candidatura (G5.1): il mister bussa a una porta senza padrone. La
+ *  risposta arriva subito — i presidenti non dormono, e nella stessa
+ *  stagione non cambiano idea due volte. */
+export async function applyForJob(careerId, clubId) {
+  const { career, clubs } = await loadCareer(careerId)
+  const club = clubs.find((c) => c.id === clubId)
+  if (!club) throw new Error('Club non trovato')
+  if (club.id === career.clubId) throw new Error('Quella panchina è già tua, mister')
+  if (club.manager) throw new Error('Panchina occupata: qualcuno è stato più veloce')
+  const jobs = career.jobs || { offers: [], applied: [], invited: [], notices: [] }
+  if ((jobs.applied || []).includes(clubId)) {
+    return { ok: false, reason: 'Hanno già il tuo curriculum: la risposta era no. I presidenti cambiano idea, ma non subito.' }
+  }
+  const userClubEntry = clubs.find((c) => c.id === career.clubId) || null
+  const trophies = (career.trophies || []).length
+  const rng = new Rng(seedFromString(career.seed + ':apply:' + career.season + ':' + clubId))
+  const hit = rng.chance(applyProb(club, userClubEntry, trophies, !career.clubId))
+  const applied = [...(jobs.applied || []), clubId]
+  const invited = hit ? [...(jobs.invited || []), clubId] : [...(jobs.invited || [])]
+  const notices = [...(jobs.notices || [])]
+  if (hit) {
+    notices.push({ round: null, kind: 'invito', text: 'Il ' + club.name + ' ha sfogliato il tuo curriculum e vuole incontrarti: la panchina è tua, se la prendi.' })
+  } else {
+    notices.push({ round: null, kind: 'rifiuto', text: 'Il ' + club.name + ' ringrazia: cercano un profilo diverso. Il calcio è crudele anche con i curriculum.' })
+  }
+  await db.careers.update(careerId, { jobs: { offers: (jobs.offers || []), applied, invited, notices: notices.slice(-40) } })
+  return { ok: hit, reason: hit ? null : 'Il club ringrazia, ma dice di no: cercano un profilo diverso.' }
+}
+
+/** Firma la nuova panchina (G5.1): si lascia il club attuale (che assume
+ *  subito un nome nuovo) e si prende la sedia libera. Lo sponsor si
+ *  rinegozia col club che arriva: la base l ha già incassata lui. */
+export async function takeJob(careerId, clubId) {
+  const { career, clubs } = await loadCareer(careerId)
+  const club = clubs.find((c) => c.id === clubId)
+  if (!club) throw new Error('Club non trovato')
+  if (club.manager) throw new Error('Panchina occupata: sei stato lento, mister')
+  const jobs = career.jobs || { offers: [], applied: [], invited: [], notices: [] }
+  const oldClub = clubs.find((c) => c.id === career.clubId) || null
+  const notices = [...(jobs.notices || []), { round: null, kind: 'ingaggio', text: 'Il ' + club.name + ' ti aspetta allo studio: panchina tua, sedia calda, stipendio vero.' }]
+  const fin = career.finance || {}
+  const aiSponsors = { ...(fin.aiSponsors || {}) }
+  delete aiSponsors[club.id]
+  await db.transaction('rw', db.careers, db.clubs, async () => {
+    if (oldClub && oldClub.key) {
+      await db.clubs.update(oldClub.key, { manager: managerNameFor(career.seed, oldClub.id, (oldClub.hires || 0) + 1), hires: (oldClub.hires || 0) + 1 })
+    }
+    if (club.key) await db.clubs.update(club.key, { sackRound: null })
+    await db.careers.update(careerId, {
+      clubId: club.id,
+      sacked: null,
+      jobs: {
+        offers: (jobs.offers || []).filter((o) => o.clubId !== club.id),
+        applied: (jobs.applied || []),
+        invited: (jobs.invited || []).filter((x) => x !== club.id),
+        notices: notices.slice(-40),
+      },
+      finance: { ...fin, sponsor: null, sponsorPool: makeSponsorOffers(career.seed, career.season, club, null), aiSponsors },
+    })
+  })
+}
+
+/** Rifiuta una offerta di lavoro (G5.1): il telefono richiamerà, con altri. */
+export async function declineOffer(careerId, clubId) {
+  const career = await db.careers.get(careerId)
+  if (!career) return
+  const jobs = career.jobs || { offers: [], applied: [], invited: [], notices: [] }
+  await db.careers.update(careerId, { jobs: { ...jobs, offers: (jobs.offers || []).filter((o) => o.clubId !== clubId) } })
 }
 
 export async function deleteCareer(id) {
@@ -720,6 +882,25 @@ export async function endSeason(careerId) {
         x.name.localeCompare(y.name),
     )
   }
+  // Senza panchina a fine stagione (G5.1): qualche disperato chiama
+  // sempre. Il club in maggiore difficoltà apre lo studio e la
+  // carriera continua — il calcio non aspetta i sentimenti.
+  let summerJobName = null
+  if (!career.clubId) {
+    const desperate = []
+    for (const l of LEAGUES) {
+      const rows = standingsByLeague[l.id] || []
+      rows.forEach((rw, i) => { if (i >= 12) desperate.push(rw.clubId) })
+    }
+    const jrng = new Rng(seedFromString(career.seed + ':summerjob:' + career.season))
+    const pool = desperate.length ? desperate : clubs.map((c) => c.id)
+    const chosenId = jrng.pick(pool)
+    career.clubId = chosenId
+    const chosen = clubById[chosenId]
+    summerJobName = chosen ? chosen.name : 'il club'
+    career.finance = career.finance ? { ...career.finance, sponsor: null } : { season: career.season, settled: [], rounds: [], mails: [] }
+    if (chosen && chosen.key) await db.clubs.update(chosen.key, { sackRound: null, manager: null })
+  }
   const userClubRow = clubById[career.clubId]
   const userLeague = LEAGUES.find((l) => l.id === (userClubRow && userClubRow.leagueId)) || LEAGUES[0]
   const standings = standingsByLeague[userLeague.id]
@@ -727,6 +908,7 @@ export async function endSeason(careerId) {
 
   const summary = {
     season: career.season,
+    summerJob: summerJobName,
     userLeagueName: userLeague.name,
     champion: champion.name,
     userPosition: standings.findIndex((r) => r.clubId === career.clubId) + 1,
@@ -955,6 +1137,9 @@ export async function endSeason(careerId) {
 
     await db.careers.update(careerId, {
       season: career.season + 1,
+      clubId: career.clubId,
+      sacked: null,
+      jobs: { offers: [], applied: [], invited: [], notices: (((career.jobs || {}).notices) || []).slice(-40) },
       finance: nextFinance,
       trophies: [
         ...(career.trophies || []),
