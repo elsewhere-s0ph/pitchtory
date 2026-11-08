@@ -2,7 +2,8 @@
  * Cassa e Stadio (G3): l'economia del club, pura e deterministica.
  * Ogni partita in casa incassa biglietti secondo capienza, posizione,
  * forma e blasone dell'ospite; ogni giornata di campionato paga gli
- * stipendi a tutti e incassa lo sponsor; chi finisce in rosso se la
+ * stipendi a tutti; lo sponsor si firma a inizio stagione (G3.1), con
+ * base subito e bonus sugli obiettivi; chi finisce in rosso se la
  * vede con la Federazione, e la Federazione non sorride. Niente tabelle
  * segrete: solo conti della serva e seed.
  */
@@ -43,11 +44,6 @@ export function matchdayGate(club, oppClub, position, form, rng, isCup) {
   const tickets = Math.round(attendance * price)
   const upkeep = Math.round(capacity * UPKEEP_PER_SEAT)
   return { attendance, tickets, upkeep, net: tickets - upkeep }
-}
-
-/** Sponsor: il blasone paga, ogni giornata di campionato. */
-export function sponsorPerRound(club) {
-  return Math.round((club.reputation || 40) * 260)
 }
 
 /** Monte ingaggi per giornata: la somma degli stipendi annuali sulle 38. */

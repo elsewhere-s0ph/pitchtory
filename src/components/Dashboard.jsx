@@ -4,8 +4,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
-import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
-import { expansionInfo, sponsorPerRound } from '../game/finance'
+import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, signSponsor, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
+import { expansionInfo } from '../game/finance'
 import { scoutedPotential, scoutError } from '../game/scouting'
 import { computeStandings } from '../game/standings'
 import { LEAGUES } from '../game/universe'
@@ -299,6 +299,24 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
     }
   }
 
+  async function handleSignSponsor(offerIndex) {
+    try {
+      await signSponsor(career.id, offerIndex)
+      await load(career.id)
+    } catch (err) {
+      window.alert(err.message)
+    }
+  }
+
+  function handlePlay() {
+    const fin = career.finance
+    if (!fin || !fin.sponsor) {
+      window.alert('Prima di scendere in campo serve uno sponsor: apri il tab Club e firma chi ti sorride di più.')
+      return
+    }
+    setMatchFixture(next)
+  }
+
   async function handleScoutUpgrade() {
     try {
       await upgradeScouts(career.id)
@@ -371,8 +389,13 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                         ? 'In casa contro ' + clubById[next.awayId].name
                         : 'In trasferta a ' + clubById[next.homeId].name}
                     </p>
+                    {(!career.finance || !career.finance.sponsor) && (
+                      <p className="mt-2 rounded-lg border border-red-400/30 bg-red-400/10 px-2 py-1.5 text-xs text-red-300">
+                        Nessuno sponsor in maglia: la Federazione vuole un nome sul petto prima della giornata 1 — firmalo nel tab Club.
+                      </p>
+                    )}
                     <button
-                      onClick={() => setMatchFixture(next)}
+                      onClick={handlePlay}
                       className="mt-3 w-full rounded-lg bg-teal-500 py-2 text-sm font-semibold text-pitch-950 shadow-[0_0_20px_rgba(47,181,110,0.25)] transition hover:bg-teal-400 hover:shadow-[0_0_28px_rgba(47,181,110,0.35)] active:scale-[0.98]"
                     >
                       Vai in campo
@@ -398,7 +421,8 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                   <li>Infortunati: <b className={injuredCount ? 'text-red-400' : ''}>{injuredCount}</b></li>
                   <li>Squalificati: <b className={bannedCount ? 'text-red-400' : ''}>{bannedCount}</b></li>
                   <li>Cassa: <b className={userClub.budget < 0 ? 'text-red-400' : ''}>{fmtMoney(userClub.budget)}</b></li>
-                  <li>Stipendi: <b>{fmtMoney(wageBill)}</b></li>
+                  <li>Sponsor: <b>{career.finance && career.finance.sponsor ? career.finance.sponsor.name : 'da firmare (tab Club)'}</b></li>
+                  <li>Stipendi: <b>{fmtMoney(wageBill)}</b> <span className="text-slate-500">a stagione</span></li>
                 </ul>
               </Card>
             </div>
@@ -473,11 +497,49 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
 
         {tab === 'club' && (
           <div className="grid animate-fade-up gap-3 sm:grid-cols-2">
+            <Card title="Sponsor della stagione">
+              {(career.finance && career.finance.sponsor) ? (
+                <div className="text-sm text-slate-300">
+                  <p className="font-semibold text-teal-300">{career.finance.sponsor.name}</p>
+                  <ul className="mt-1 space-y-1">
+                    <li>Base: <b>{fmtMoney(career.finance.sponsor.base)}</b> — già in cassa.</li>
+                    {career.finance.sponsor.bonus ? (
+                      <li>Bonus: <b className="text-flood-300">{fmtMoney(career.finance.sponsor.bonus)}</b> se a fine stagione arriva: {career.finance.sponsor.objectiveLabel}</li>
+                    ) : (
+                      <li>Bonus: nessuno. Paga e tace.</li>
+                    )}
+                  </ul>
+                </div>
+              ) : (career.finance && career.finance.sponsorPool && career.finance.sponsorPool.length) ? (
+                <div>
+                  <p className="mb-2 text-xs text-slate-400">
+                    Nessuno sponsor in maglia: senza un nome sul petto non si scende in campo. Più blasone e più risultati portano più offerte sul tavolo — sceglierle è il mestiere.
+                  </p>
+                  <ul className="space-y-2">
+                    {career.finance.sponsorPool.map((o, i) => (
+                      <li key={i} className="rounded-lg border border-slate-700 p-2.5 text-sm">
+                        <p className="font-semibold text-slate-200">{o.name}</p>
+                        <p className="mt-0.5 text-xs text-teal-300">Base subito: {fmtMoney(o.base)}</p>
+                        {o.bonus ? (
+                          <p className="text-xs text-flood-300">Bonus {fmtMoney(o.bonus)} se: {o.objectiveLabel}</p>
+                        ) : (
+                          <p className="text-xs text-slate-500">Nessun obbligo: paga e tace.</p>
+                        )}
+                        <button onClick={() => handleSignSponsor(i)} className="mt-1.5 w-full rounded-lg bg-teal-500 px-2 py-1.5 text-xs font-semibold text-pitch-950 hover:bg-teal-400">
+                          Firma con {o.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Nessuna trattativa aperta: gli sponsor si cercano a inizio stagione, al telefono di giugno.</p>
+              )}
+            </Card>
             <Card title="Cassa e Stadio">
               <ul className="mb-3 space-y-1 text-sm text-slate-300">
                 <li>Cassa: <b className={userClub.budget < 0 ? 'text-red-400' : ''}>{fmtMoney(userClub.budget)}</b></li>
                 <li>Stipendi rosa: <b>{fmtMoney(wageBill)}</b> a stagione</li>
-                <li>Sponsor: <b>{fmtMoney(sponsorPerRound(userClub) * 38)}</b> a stagione</li>
                 <li>Stadio: <b>{userClub.stadium.name}</b> ({userClub.stadium.capacity.toLocaleString('it-IT')} posti)</li>
               </ul>
               {stadiumInfo.canDo ? (
@@ -499,7 +561,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                 <LevelBar label="Staff" level={userClub.facilities.staffLevel} />
               </div>
               <p className="mt-2 text-[10px] text-slate-500">
-                Ogni partita in casa incassa biglietti secondo capienza, posizione e forma; ogni giornata paga gli stipendi e incassa lo sponsor.
+                Ogni partita in casa incassa biglietti secondo capienza, posizione e forma; ogni giornata paga gli stipendi. Lo sponsor si firma a inizio stagione: base subito, bonus se gli obiettivi arrivano.
               </p>
             </Card>
             {(career.finance && career.finance.mails && career.finance.mails.length) ? (
@@ -687,7 +749,10 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                 <h3 className="mb-2 text-sm font-semibold text-flood-400">I conti della stagione</h3>
                 <ul className="space-y-1 text-sm">
                   <li className="flex justify-between"><span>Biglietti incassati</span><span className="text-teal-300">{fmtMoney(seasonSummary.finance.tickets)}</span></li>
-                  <li className="flex justify-between"><span>Sponsor</span><span className="text-teal-300">{fmtMoney(seasonSummary.finance.sponsor)}</span></li>
+                  <li className="flex justify-between"><span>Sponsor (base a inizio stagione)</span><span className="text-teal-300">{fmtMoney(seasonSummary.finance.sponsorBase || 0)}</span></li>
+                  {seasonSummary.finance.sponsorBonus ? (
+                    <li className="flex justify-between"><span>Bonus obiettivo dello sponsor</span><span className="text-teal-300">+{fmtMoney(seasonSummary.finance.sponsorBonus)}</span></li>
+                  ) : null}
                   <li className="flex justify-between"><span>Manutenzione stadio</span><span className="text-red-300">-{fmtMoney(seasonSummary.finance.upkeep)}</span></li>
                   <li className="flex justify-between"><span>Stipendi</span><span className="text-red-300">-{fmtMoney(seasonSummary.finance.wages)}</span></li>
                   {seasonSummary.finance.expansions ? (

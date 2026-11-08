@@ -68,7 +68,7 @@ export default function PlayerCard({ player, scouts, round, onClose }) {
 
         <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-slate-300">
           <li>Valore: <b>{fmtMoney(player.value)}</b></li>
-          <li>Stipendio: <b>{fmtMoney(player.wage)}</b></li>
+          <li>Stipendio: <b>{fmtMoney(player.wage)}</b> <span className="text-slate-500">a stagione</span></li>
           <li>
             Contratto: <b>fino al {player.contractUntil}</b>
             {expiring && <span className="ml-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-400">Scade</span>}
