@@ -14,6 +14,7 @@ import { assignLeagueAbilities, abilityValueBonus } from './game/abilities'
 import { Rng, seedFromString } from './lib/rng'
 import { simulateMatch, matchSeed, matchSeedNumber, teamStrength } from './game/engine'
 import { DEFAULT_TACTICS } from './game/tactics'
+import { matchdayGate, sponsorPerRound, wagesPerRound, expansionInfo, penaltyPoints, federationMail } from './game/finance'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -204,6 +205,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     season: universe.season,
     settings: { matchDuration },
     tactics: { ...DEFAULT_TACTICS },
+    finance: { season: universe.season, settled: [], rounds: [], mails: [] },
     universeVersion: UNIVERSE_VERSION,
     scouts: { level: 1, focus: null },
     trophies: [],
@@ -300,6 +302,13 @@ export async function loadCareer(id) {
     await db.careers.update(id, { tactics: career.tactics })
   }
 
+  // Migrazione lazy (G3): il registro della cassa. Chi non ce l'ha parte
+  // da zero conti, e la stagione in corso non cambia di una virgola.
+  if (!career.finance || career.finance.season !== career.season) {
+    career.finance = { season: career.season, settled: [], rounds: [], mails: [] }
+    await db.careers.update(id, { finance: career.finance })
+  }
+
   return { career, clubs, players, fixtures }
 }
 
@@ -337,6 +346,148 @@ export async function setLineup(careerId, lineup) {
   if (!career) return
   await db.careers.update(careerId, { lineup: lineup || null })
   return lineup || null
+}
+
+/** La giornata paga (G3): biglietti a chi ospita, sponsor e stipendi a
+ *  tutti. Idempotente sul registro della stagione: la stessa giornata
+ *  non si incassa due volte, nemmeno per sbaglio. */
+export async function settleRound(careerId, number) {
+  const { career, clubs, players, fixtures } = await loadCareer(careerId)
+  let fin = career.finance || { season: career.season, settled: [], rounds: [], mails: [] }
+  if (fin.season !== career.season) fin = { season: career.season, settled: [], rounds: [], mails: [] }
+  if ((fin.settled || []).includes(number)) return
+  fin.settled = [...(fin.settled || []), number]
+
+  const clubById = Object.fromEntries(clubs.map((c) => [c.id, c]))
+  const playersByClub = {}
+  for (const p of players) (playersByClub[p.clubId] = playersByClub[p.clubId] || []).push(p)
+
+  // Posizione in classifica e forma: conti sulle partite già giocate.
+  const byLeague = {}
+  for (const l of LEAGUES) {
+    byLeague[l.id] = computeStandings(clubs, fixtures, l.id).map((row, i) => [row.clubId, i + 1])
+  }
+  const positionOf = (clubId) => {
+    for (const m of Object.values(byLeague)) {
+      const hit = m.find(([cid]) => cid === clubId)
+      if (hit) return hit[1]
+    }
+    return 10
+  }
+  const formOf = (clubId) => {
+    const played = fixtures
+      .filter((f) => f.played && (f.homeId === clubId || f.awayId === clubId) && f.number < number)
+      .sort((a, b) => a.number - b.number)
+      .slice(-5)
+    const wins = played.filter((f) => (f.homeId === clubId ? f.homeGoals > f.awayGoals : f.awayGoals > f.homeGoals)).length
+    const losses = played.filter((f) => (f.homeId === clubId ? f.homeGoals < f.awayGoals : f.awayGoals < f.homeGoals)).length
+    return { wins, losses }
+  }
+
+  const deltas = {}
+  const row = { n: number, attendance: 0, tickets: 0, upkeep: 0, sponsor: 0, wages: 0 }
+  const isLeagueRound = Number.isInteger(number)
+
+  for (const f of fixtures.filter((x) => x.number === number && x.played)) {
+    const home = clubById[f.homeId]
+    if (!home) continue
+    const rng = new Rng((matchSeedNumber(career.seed, f.key + '#' + career.season) ^ 0xfeed) >>> 0)
+    const gate = matchdayGate(home, clubById[f.awayId], positionOf(home.id), formOf(home.id), rng, f.type === 'cup')
+    deltas[home.key] = (deltas[home.key] || 0) + gate.net
+    if (home.id === career.clubId) {
+      row.attendance = gate.attendance
+      row.tickets = gate.tickets
+      row.upkeep = gate.upkeep
+    }
+  }
+  if (isLeagueRound) {
+    for (const c of clubs) {
+      const sponsor = sponsorPerRound(c)
+      const wages = wagesPerRound(playersByClub[c.id])
+      deltas[c.key] = (deltas[c.key] || 0) + sponsor - wages
+      if (c.id === career.clubId) {
+        row.sponsor = sponsor
+        row.wages = wages
+      }
+    }
+  }
+
+  const balances = {}
+  await db.transaction('rw', db.careers, db.clubs, db.players, async () => {
+    for (const c of clubs) {
+      const d = deltas[c.key] || 0
+      if (!d) continue
+      const balance = c.budget + d
+      balances[c.id] = balance
+      if (c.key) await db.clubs.update(c.key, { budget: balance })
+    }
+    // Il rosa della cassa lo sente chi gioca nel club del mister.
+    const userBalance = balances[career.clubId]
+    if (userBalance !== undefined && userBalance < 0) {
+      const userClubEntry = clubs.find((c) => c.id === career.clubId)
+      const list = (playersByClub[career.clubId] || []).filter((p) => !p.youth)
+      for (const p of list) {
+        if (!p.key) continue
+        const morale = clamp(p.morale - 2, 20, 99)
+        if (morale !== p.morale) await db.players.update(p.key, { morale })
+      }
+      const already = (fin.mails || []).some((m) => m.kind === 'rosso')
+      if (!already) {
+        fin.mails = [
+          ...(fin.mails || []),
+          federationMail(career.coachName, userClubEntry ? userClubEntry.name : 'club', userBalance, career.season, number),
+        ]
+      }
+    }
+    fin.rounds = [...(fin.rounds || []), row]
+    await db.careers.update(careerId, { finance: fin })
+  })
+}
+
+/** Amplia lo stadio (G3): a scaglioni, a soldi sonanti. Quanti lavori si
+ *  possano fare lo decide la struttura (livello stadio nelle facilities). */
+export async function expandStadium(careerId) {
+  const career = await db.careers.get(careerId)
+  if (!career) throw new Error('Carriera non trovata')
+  const club = await db.clubs.get(careerId + ':' + career.clubId)
+  if (!club) throw new Error('Club non trovato')
+  const info = expansionInfo(club)
+  if (!info.canDo) throw new Error('La struttura non regge altri lavori: serve uno stadio di livello superiore')
+  if (club.budget < info.cost) throw new Error('Cassa insufficiente: servono ' + info.cost / 1000000 + 'M')
+  const fin = career.finance || { season: career.season, settled: [], rounds: [], mails: [] }
+  await db.transaction('rw', db.careers, db.clubs, async () => {
+    await db.clubs.update(club.key, {
+      budget: club.budget - info.cost,
+      expansions: info.done + 1,
+      stadium: { ...club.stadium, capacity: info.nextCapacity },
+    })
+    await db.careers.update(careerId, { finance: { ...fin, expansions: (fin.expansions || 0) + info.cost } })
+  })
+  return info
+}
+
+/** Prestito secco (G3): il giocatore si trasferisce fino a fine stagione,
+ *  poi torna a casa sua. Niente proprietà: niente vendita. */
+export async function loanPlayer(careerId, playerKey, fromClubKey, toClubKey, fee) {
+  await db.transaction('rw', db.players, db.clubs, async () => {
+    const [p, from, to] = await Promise.all([
+      db.players.get(playerKey),
+      db.clubs.get(fromClubKey),
+      db.clubs.get(toClubKey),
+    ])
+    if (!p || !from || !to) throw new Error('Prestito non valido')
+    if (to.budget < fee) throw new Error('Cassa insufficiente')
+    if (p.loanFrom) throw new Error('Già in prestito: i prestiti dei prestiti non esistono')
+    await db.players.update(playerKey, { clubId: to.id, loanFrom: from.id })
+    await db.clubs.update(fromClubKey, { budget: from.budget + fee })
+    await db.clubs.update(toClubKey, { budget: to.budget - fee })
+    const all = await db.players.where('careerId').equals(careerId).toArray()
+    for (const club of [from, to]) {
+      const seniors = all.filter((x) => x.clubId === club.id && !x.youth)
+      const avg = seniors.length ? Math.round(seniors.reduce((s, x) => s + x.ovr, 0) / seniors.length) : club.avgOvr
+      await db.clubs.update(club.key, { avgOvr: avg })
+    }
+  })
 }
 
 export async function deleteCareer(id) {
@@ -487,6 +638,28 @@ export async function endSeason(careerId) {
   // però guarda tutte.
   const standingsByLeague = {}
   for (const l of LEAGUES) standingsByLeague[l.id] = computeStandings(clubs, fixtures, l.id)
+
+  // La Federazione fa i conti (G3): chi chiude in rosso perde punti —
+  // un punto ogni 1,5M di debito, massimo 15 — sulla classifica finale.
+  const deductions = {}
+  for (const c of clubs) {
+    const pts = penaltyPoints(c.budget)
+    if (pts > 0) deductions[c.id] = pts
+  }
+  for (const l of LEAGUES) {
+    const rows = standingsByLeague[l.id]
+    rows.forEach((rw) => {
+      const dp = deductions[rw.clubId] || 0
+      if (dp) rw.pts -= dp
+    })
+    rows.sort(
+      (x, y) =>
+        y.pts - x.pts ||
+        (y.gf - y.ga) - (x.gf - x.ga) ||
+        y.gf - x.gf ||
+        x.name.localeCompare(y.name),
+    )
+  }
   const userClubRow = clubById[career.clubId]
   const userLeague = LEAGUES.find((l) => l.id === (userClubRow && userClubRow.leagueId)) || LEAGUES[0]
   const standings = standingsByLeague[userLeague.id]
@@ -504,6 +677,21 @@ export async function endSeason(careerId) {
     userRelegated: false,
     progressed: [],
     declined: [],
+  }
+
+  summary.deductions = Object.entries(deductions)
+    .map(([cid, pts]) => ({ name: (clubById[cid] || {}).name || cid, points: pts, balance: (clubById[cid] || {}).budget || 0 }))
+    .sort((a, b) => b.points - a.points)
+  summary.userDeduction = deductions[career.clubId] || 0
+  // I conti della stagione (G3): il registro della cassa parla.
+  const finRounds = (career.finance && career.finance.rounds) || []
+  summary.finance = {
+    tickets: finRounds.reduce((s, x) => s + (x.tickets || 0), 0),
+    sponsor: finRounds.reduce((s, x) => s + (x.sponsor || 0), 0),
+    upkeep: finRounds.reduce((s, x) => s + (x.upkeep || 0), 0),
+    wages: finRounds.reduce((s, x) => s + (x.wages || 0), 0),
+    expansions: (career.finance && career.finance.expansions) || 0,
+    endBalance: userClubRow ? userClubRow.budget : 0,
   }
 
   // Prima dell'estate si chiude la Coppa: se il mister è ancora dentro,
@@ -534,6 +722,13 @@ export async function endSeason(careerId) {
   // NB: clubs serve dentro la transazione (media OVR e budget): ometterlo
   // dallo scope fa fallire tutta la transazione su Dexie.
   await db.transaction('rw', db.careers, db.clubs, db.players, db.fixtures, async () => {
+    // I prestiti tornano a casa (G3): fine stagione, si restituisce la merce.
+    for (const p of players) {
+      if (p.loanFrom && p.loanFrom !== p.clubId && p.key) {
+        p.clubId = p.loanFrom
+        await db.players.update(p.key, { clubId: p.loanFrom, loanFrom: null })
+      }
+    }
     for (const p of players) {
       const club = clubById[p.clubId]
       const youthLevel = (club && club.facilities && club.facilities.youthLevel) || 1
@@ -642,6 +837,7 @@ export async function endSeason(careerId) {
 
     await db.careers.update(careerId, {
       season: career.season + 1,
+      finance: { season: career.season + 1, settled: [], rounds: [], mails: [] },
       trophies: [
         ...(career.trophies || []),
         ...LEAGUES.map((l) => {
