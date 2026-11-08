@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G3 — Cassa e Stadio (v0.17.0): incassi da biglietti legati a capienza, posizione e forma, sponsor dal blasone, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G4 — Occhi sui Grandi.
+> Stato: G3 — Cassa e Stadio (v0.18.0): incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G4 — Occhi sui Grandi.
 
 ## Sviluppo
 
@@ -134,9 +134,15 @@ dell'ospite — più un pizzico di umore della curva nel seed della partita.
 Biglietti a 14 € in Divisione d'Onore, 8 in cadetta, un quarto in più per la
 Coppa; la manutenzione si paga a posto, a ogni partita in casa.
 
-- **Sponsor e stipendi**: lo sponsor vale quanto la reputazione (a ogni
-  giornata di campionato), gli stipendi sono il monte ingaggi diviso in 38
-  rate. Il calcolo vale per tutta la lega: anche i club AI vivono di incassi.
+- **Sponsor e stipendi (v0.18.0)**: lo sponsor si cerca a inizio stagione —
+  un pool di offerte (da 3 a 8) costruito sul blasone e sui risultati della
+  stagione appena chiusa: più si vince, più ne arrivano. La base si incassa
+  alla firma, il bonus solo se l obiettivo arriva a fine stagione — e le
+  cifre stanno al posto del club: a chi lotta per la salvezza nessuno offre
+  lo scudetto, si offeriscono salvezza e promozione. I club AI firmano da
+  soli. Gli stipendi sono il monte ingaggi in 38 rate e in scheda si legge
+  lo stipendio di stagione. Il calcolo vale per tutta la lega: anche i club
+  AI vivono di incassi.
 - **Ampliamento dello stadio**: a scaglioni da 4.000 posti, costo crescente a
   ogni lavoro (4M + 2M a scaglione in massima, 1M + 0,5M in cadetta). Quanti
   lavori regge la struttura lo dice il livello dello stadio nelle strutture.
@@ -153,7 +159,11 @@ Coppa; la manutenzione si paga a posto, a ogni partita in casa.
   promosse e retrocessioni compresi. Chiudete in nero, mister.
 
 Le carriere in corso sopravvivono: il registro della cassa arriva con la
-migrazione al primo caricamento e i conti partono dalla stagione in corso.
+migrazione al primo caricamento, i conti partono dalla stagione in corso e
+la prima trattativa sponsor apre al primo giro. Senza firma, la Federazione
+non fa scendere in campo nessuno: prima il nome sul petto, poi il calcio.
+
+## Stack
 
 ## Stack
 
