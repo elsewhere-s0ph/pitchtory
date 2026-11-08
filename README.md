@@ -1,10 +1,11 @@
 
 
+
 # Pitchtory ⚽
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G1 — La Piramide completa (v0.15.0): due leghe con promozioni e retrocessioni, Coppa Nazionale Trofeo Bellandi, squalifiche, rosa leggibile su mobile — più motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G2 — Banco e Lavagnetta.
+> Stato: G1 — La Piramide completa (v0.15.1): due leghe con promozioni e retrocessioni, Coppa Nazionale Trofeo Bellandi a sedici infrasettimanale, squalifiche, rosa leggibile su mobile — più motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G2 — Banco e Lavagnetta.
 
 ## Sviluppo
 
@@ -78,7 +79,7 @@ Pitchtory è una PWA completa secondo lo standard Little Elsewhere:
 Due serie, una coppa, e le conseguenze che vengono con entrambe:
 
 - **Due leghe**: Divisione d'Onore e Campionato dell'Abnegazione (la serie cadetta). La carriera parte nella lega che vuoi; a fine stagione due salgono e due scendono, con budget e reputazione che seguono la direzione.
-- **Coppa Nazionale Trofeo Bellandi**: eliminazione diretta tra le due serie — 32 società (16 per serie, le più blasonate), cinque turni dopo la 38ª di campionato. Niente pareggi: chi passa lo decide dal seed, ai rigori se serve.
+- **Coppa Nazionale Trofeo Bellandi**: sedici società a eliminazione diretta — le prime 8 di ogni serie dalla seconda stagione, mentre all'esordio del mondo quindici estratte a sorte più la tua. Quattro turni infrasettimanali (Ottavi, Quarti, Semifinale, Finale) giocati tra le giornate di campionato, con la finale che arriva prima della 38ª. Niente pareggi: chi passa lo decide dal seed, ai rigori se serve.
 - **Squalifiche**: espulsione = una giornata di stop, quinta ammonizione = una giornata e il contatore riparte. Vale per chiunque scenda in campo, QTE o simulazione che sia.
 - **Classifiche separate** per lega, calendari distinti: le partite di Coppa non toccano i campionati.
 - **Rosa leggibile su mobile**: la riga del giocatore va su due righe al telefono (il nome si legge per intero), una riga al desktop.

@@ -1,5 +1,6 @@
 
 
+
 import Dexie from 'dexie'
 import { generateUniverse, playerValue, LEAGUES } from './game/universe'
 import { generateSchedule } from './game/schedule'
@@ -28,25 +29,25 @@ db.version(1).stores({
   fixtures: 'key, careerId',
 })
 
-/** Versione dell'universo (G1: la Piramide). Le carriere nate prima hanno
- * una lega sola: non sono compatibili, si riparte da zero. */
-export const UNIVERSE_VERSION = 2
+/** Versione dell'universo (G1.1: la Coppa si gioca a sedici, infrasettimanale).
+ * Le carriere nate prima hanno un formato di Coppa diverso: si riparte da zero. */
+export const UNIVERSE_VERSION = 3
 
 /** Sale per il calendario di ogni lega: stessa carriera, stesse sorti. */
 const LEAGUE_SCHED_SALT = { c: 0, a: 0x1eaf }
 
-/** Coppa Nazionale Trofeo Bellandi (G1): eliminazione diretta tra le due
- * serie. 32 società (16 per serie, le più titolate), cinque turni che si
- * giocano dopo la 38ª di campionato: qui i pari non esistono. */
+/** Coppa Nazionale Trofeo Bellandi (G1.1): sedici società a eliminazione
+ * diretta — le prime 8 di ogni serie dalla seconda stagione, mentre
+ * all'esordio del mondo quindici estratte a sorte più quella del mister.
+ * Quattro turni infrasettimanali giocati tra le giornate di campionato,
+ * con la finale che arriva sempre prima della 38ª. Qui i pari non
+ * esistono: chi passa lo decide il seed. */
 export const CUP_NAME = 'Coppa Nazionale Trofeo Bellandi'
-export const CUP_ROUNDS = { 1: 'Sedicesimi', 2: 'Ottavi', 3: 'Quarti', 4: 'Semifinale', 5: 'Finale' }
+export const CUP_ROUNDS = { 1: 'Ottavi', 2: 'Quarti', 3: 'Semifinale', 4: 'Finale' }
 const CUP_LEAGUE_ID = 'b'
-const CUP_MAX_ROUND = 5
-
-function cupQualifiers(clubs) {
-  const forLeague = (id) => clubs.filter((c) => c.leagueId === id).sort((a, b) => b.reputation - a.reputation).slice(0, 16)
-  return [...forLeague(LEAGUES[0].id), ...forLeague(LEAGUES[1].id)]
-}
+const CUP_MAX_ROUND = 4
+/** I turni di Coppa vivono a mezza giornata: 8,5 sta tra l'8ª e la 9ª. */
+const CUP_ROUND_NUMBER = { 1: 8.5, 2: 16.5, 3: 24.5, 4: 32.5 }
 
 async function addCupRound(careerId, round, pairs) {
   await db.fixtures.bulkAdd(pairs.map(([home, away], i) => ({
@@ -55,7 +56,7 @@ async function addCupRound(careerId, round, pairs) {
     leagueId: CUP_LEAGUE_ID,
     type: 'cup',
     round,
-    number: 38 + round,
+    number: CUP_ROUND_NUMBER[round],
     leg: 1,
     homeId: home.id,
     awayId: away.id,
@@ -66,10 +67,12 @@ async function addCupRound(careerId, round, pairs) {
   })))
 }
 
-/** Turno 1: le 32 più titolate, il sorteggio è scritto nel seed. */
-export async function createCupFirstRound(careerId, clubs, seed, season) {
+/** Turno 1: chi partecipa lo decide chi chiama (le prime 8 di ogni serie
+ * a fine stagione, o il sorteggio d'esordio), gli accoppiamenti li decide
+ * il seed. */
+export async function createCupFirstRound(careerId, qualifiers, seed, season) {
   const rng = new Rng(seedFromString(seed + ':cup:' + season))
-  const pool = rng.shuffle(cupQualifiers(clubs))
+  const pool = rng.shuffle(qualifiers.slice())
   const pairs = []
   for (let i = 0; i + 1 < pool.length; i += 2) {
     pairs.push(rng.chance(0.5) ? [pool[i], pool[i + 1]] : [pool[i + 1], pool[i]])
@@ -138,7 +141,9 @@ async function closeCup(careerId, career, clubs, players) {
 
 /** Squalifiche (G1): espulsione = una giornata di stop, quinta
  * ammonizione = una giornata e il contatore riparte. Vale per chiunque
- * scenda in campo, QTE o simulazione che sia. */
+ * scenda in campo, QTE o simulazione che sia. I turni di Coppa vivono a
+ * mezza giornata (8,5): il floor riporta gli stop su numeri interi —
+ * una rossa in Coppa salta la giornata di campionato dopo. */
 async function writeSuspensions(fixture, events, byId) {
   const reds = new Set(events.filter((e) => e.type === 'red' && e.playerId).map((e) => e.playerId))
   const yellows = {}
@@ -149,7 +154,7 @@ async function writeSuspensions(fixture, events, byId) {
     const tot = (p.cards || 0) + (yellows[id] || 0)
     const red = reds.has(id)
     if (red || tot >= 5) {
-      await db.players.update(p.key, { bannedUntil: fixture.number + 1, cards: red ? tot : tot - 5 })
+      await db.players.update(p.key, { bannedUntil: Math.floor(fixture.number) + 1, cards: red ? tot : tot - 5 })
     } else {
       await db.players.update(p.key, { cards: tot })
     }
@@ -215,7 +220,13 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
       ...p,
     })))
     await db.fixtures.bulkAdd(buildLeagueFixtures(careerId, universe.clubs, (seed ^ 0x5ced) >>> 0))
-    await createCupFirstRound(careerId, universe.clubs, seed, universe.season)
+    // Coppa d'esordio: la società del mister più quindici estratte a sorte
+    // tra tutte le altre — il tabellone d'apertura si merita un debuttante.
+    const cupRng = new Rng(seedFromString(seed + ':cup:qual:' + universe.season))
+    const cupPool = universe.clubs.filter((c) => c.id !== clubId)
+    const cupDrawn = []
+    while (cupDrawn.length < 15 && cupPool.length) cupDrawn.push(cupPool.splice(cupRng.int(0, cupPool.length - 1), 1)[0])
+    await createCupFirstRound(careerId, [universe.clubs.find((c) => c.id === clubId), ...cupDrawn], seed, universe.season)
   })
 
   return careerId
@@ -230,7 +241,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
 export async function loadCareer(id) {
   const career = await db.careers.get(id)
   if (career && career.universeVersion !== UNIVERSE_VERSION) {
-    throw new Error('Carriera nata prima della Piramide (G1): il suo universo aveva una lega sola. Creane una nuova.')
+    throw new Error('Carriera nata con l'universo di prima (Coppa a 32 dopo la 38ª): creane una nuova.')
   }
   const [clubs, players, fixtures] = await Promise.all([
     db.clubs.where('careerId').equals(id).toArray(),
@@ -282,7 +293,7 @@ export async function loadCareer(id) {
 
 export async function listCareers() {
   const all = await db.careers.orderBy('createdAt').reverse().toArray()
-  // La Piramide non riporta indietro le carriere pre-G1: si riparte da zero
+  // L'universo nuovo non adotta le carriere nate prima: si riparte da zero
   // (con il benestare del mister, che le usava solo per le prove).
   const stale = all.filter((c) => c.universeVersion !== UNIVERSE_VERSION)
   if (stale.length) {
@@ -353,7 +364,7 @@ export async function applyPostMatch(careerId, fixture, result, userClubId, user
     }
     for (const e of injuries) {
       const p = byId.get(e.playerId)
-      if (p && p.key) await db.players.update(p.key, { injuredUntil: fixture.number + e.weeks })
+      if (p && p.key) await db.players.update(p.key, { injuredUntil: Math.floor(fixture.number) + e.weeks })
     }
     await writeSuspensions(fixture, result.events, byId)
   })
@@ -368,7 +379,7 @@ export async function applyAiMatchday(fixture, events, allPlayers) {
   await db.transaction('rw', db.players, async () => {
     for (const e of injuries) {
       const p = byId.get(e.playerId)
-      if (p && p.key) await db.players.update(p.key, { injuredUntil: fixture.number + e.weeks })
+      if (p && p.key) await db.players.update(p.key, { injuredUntil: Math.floor(fixture.number) + e.weeks })
     }
     await writeSuspensions(fixture, events, byId)
   })
@@ -613,8 +624,13 @@ export async function endSeason(careerId) {
     await db.fixtures.bulkAdd(buildLeagueFixtures(careerId, clubs, (career.seed ^ (0x5ced + career.season)) >>> 0))
   })
 
-  // Nuova stagione, nuova Coppa: le 32 più titolate si risedono al tavolo.
-  await createCupFirstRound(careerId, clubs, career.seed, career.season + 1)
+  // Nuova stagione, nuova Coppa: le prime 8 di ogni serie della stagione
+  // appena chiusa si guadagnano il posto a tavolino.
+  const cupQualifiersNext = [
+    ...(standingsByLeague[LEAGUES[0].id] || []).slice(0, 8),
+    ...(standingsByLeague[LEAGUES[1].id] || []).slice(0, 8),
+  ].map((r) => clubById[r.clubId]).filter(Boolean)
+  await createCupFirstRound(careerId, cupQualifiersNext, career.seed, career.season + 1)
 
   const weight = (x) => Math.abs(x.to - x.from)
   summary.progressed.sort((a, b) => weight(b) - weight(a))
