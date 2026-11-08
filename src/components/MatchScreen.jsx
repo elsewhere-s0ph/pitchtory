@@ -3,10 +3,12 @@
 
 
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
-import { buildMatch, matchSeedNumber, bestXI, subImpact } from '../game/engine'
-import { Rng } from '../lib/rng'
+import { buildMatch, matchSeedNumber, subImpact } from '../game/engine'
+import { Rng, seedFromString } from '../lib/rng'
+import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, bestXIFor } from '../game/tactics'
 import { hasAbility } from '../game/abilities'
 import { LEAGUES } from '../game/universe'
 import { CUP_NAME, CUP_ROUNDS } from '../db'
@@ -64,6 +66,8 @@ export default function MatchScreen({ fixture, onDone }) {
   const [pickIn, setPickIn] = useState(null)
   const [pensResult, setPensResult] = useState(null)
   const [pensAuto, setPensAuto] = useState(false)
+  const [currentFormation, setCurrentFormation] = useState(null)
+  const [formChangesOpen, setFormChangesOpen] = useState(false)
 
   const clubById = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c])), [clubs])
   const playersByClub = useMemo(() => {
@@ -83,38 +87,57 @@ export default function MatchScreen({ fixture, onDone }) {
     return m
   }, [playersByClub, fixture])
 
+  const userTactics = useMemo(() => ({ ...DEFAULT_TACTICS, ...(career.tactics || {}) }), [career])
   const match = useMemo(() => {
     const seedNumber = matchSeedNumber(career.seed, fixture.key + '#' + career.season)
     const rng = new Rng(seedNumber)
+    const userIsHome = fixture.homeId === career.clubId
+    // G2: la lavagnetta del mister scende in campo con la squadra.
     const built = buildMatch(clubById[fixture.homeId], clubById[fixture.awayId], fitPlayersByClub, rng, {
       keyMoments: true,
       seedNumber,
       userClubId: career.clubId,
+      homeTactics: userIsHome ? userTactics : null,
+      awayTactics: userIsHome ? null : userTactics,
     })
-    return { ...built, userIsHome: fixture.homeId === career.clubId, seedNumber }
-  }, [career, clubById, fitPlayersByClub, fixture])
+    return { ...built, userIsHome, seedNumber }
+  }, [career, clubById, fitPlayersByClub, fixture, userTactics])
 
   /** Rosa senior della squadra utente: XI titolare e panchina. */
   const userSquad = useMemo(
     () => (fitPlayersByClub[career.clubId] || []).filter((p) => !p.youth),
     [fitPlayersByClub, career],
   )
-  const xi = useMemo(() => bestXI(userSquad), [userSquad])
+  const activeFormation = currentFormation || userTactics.formation
+  const xi = useMemo(() => bestXIFor(userTactics.formation, userSquad), [userTactics, userSquad])
   const bench = useMemo(() => userSquad.filter((p) => !xi.some((t) => t.id === p.id)), [userSquad, xi])
 
   const [stamina, setStamina] = useState(() => Object.fromEntries(xi.map((p) => [p.id, 100])))
 
-  /** Chi è in campo al minuto corrente (cambi e infortuni applicati). */
+  /** Lo slot di chi entra: quello di chi è uscito, per affinità. */
+  const slotOfInId = (id) => {
+    const s = subs.find((x) => x.inId === id)
+    if (s && s.slot) return s.slot
+    const p = userSquad.find((x) => x.id === id)
+    return (p && p.role) || 'MF'
+  }
+
+  /** Chi è in campo al minuto corrente (cambi, infortuni e modulo in corsa). */
   const onPitch = useMemo(() => {
     const outIds = new Set(subs.filter((s) => s.minute <= minute).map((s) => s.outId))
     const inIds = new Set(subs.filter((s) => s.minute <= minute && s.inId).map((s) => s.inId))
     const list = xi.filter((p) => !outIds.has(p.id))
     for (const id of inIds) {
       const p = userSquad.find((x) => x.id === id)
-      if (p) list.push(p)
+      if (p) list.push({ ...p, slot: slotOfInId(id) })
+    }
+    // Cambio modulo in corsa (G2): chi è in campo si riassetta sugli slot
+    // nuovi — nessuno entra dalla panchina per magia.
+    if (currentFormation && currentFormation !== userTactics.formation && list.length) {
+      return bestXIFor(currentFormation, list)
     }
     return list
-  }, [xi, subs, minute, userSquad])
+  }, [xi, subs, minute, userSquad, currentFormation, userTactics])
 
   // Consumo stamina a ogni minuto simulato.
   useEffect(() => {
@@ -125,6 +148,9 @@ export default function MatchScreen({ fixture, onDone }) {
         if (next[p.id] === undefined) continue
         let decay = STAMINA_DECAY[p.role] || 0.9
         if (hasAbility(p, 'maratoneta')) decay *= 0.7
+        // G2: il pressing aggressivo ce lo portano addosso i polmoni.
+        if (userTactics.pressing === 'aggressivo') decay *= 1.25
+        else if (userTactics.pressing === 'basso') decay *= 0.85
         next[p.id] = Math.max(0, next[p.id] - decay)
       }
       return next
@@ -207,14 +233,13 @@ export default function MatchScreen({ fixture, onDone }) {
     const outP = userSquad.find((p) => p.id === pending.playerId)
     const onField = outP && onPitch.some((p) => p.id === outP.id)
     const benchAvail = bench.filter((p) => !subs.some((s) => s.inId === p.id))
+    const slotRole = outP && outP.slot ? outP.slot : outP ? outP.role : 'MF'
     const inP =
       onField && subsUsed < MAX_SUBS
-        ? benchAvail.filter((p) => outP && p.role === outP.role).sort((a, b) => b.ovr - a.ovr)[0] ||
-          benchAvail.slice().sort((a, b) => b.ovr - a.ovr)[0] ||
-          null
+        ? benchAvail.slice().sort((a, b) => b.ovr * affinity(b.role, slotRole) - a.ovr * affinity(a.role, slotRole))[0] || null
         : null
     const m = pending.minute
-    setSubs((s) => [...s, { minute: m, outId: pending.playerId, inId: inP ? inP.id : null, forced: true }])
+    setSubs((s) => [...s, { minute: m, outId: pending.playerId, inId: inP ? inP.id : null, slot: slotRole, forced: true }])
     if (inP) {
       setStamina((st) => ({ ...st, [inP.id]: FRESH_STAMINA }))
       setSubEvents((s) => [
@@ -279,12 +304,13 @@ export default function MatchScreen({ fixture, onDone }) {
   function makeSub() {
     if (!pickOut || !pickIn || subsUsed >= MAX_SUBS) return
     const m = Math.min(Math.max(1, minute), 92)
-    setSubs((s) => [...s, { minute: m, outId: pickOut.id, inId: pickIn.id, forced: false }])
+    const slotRole = pickOut.slot || pickOut.role
+    setSubs((s) => [...s, { minute: m, outId: pickOut.id, inId: pickIn.id, slot: slotRole, forced: false }])
     setStamina((s) => ({ ...s, [pickIn.id]: FRESH_STAMINA }))
     const evs = [
-      { minute: m, type: 'sub', sub: true, text: 'Cambio: esce ' + pickOut.name + ', entra ' + pickIn.name },
+      { minute: m, type: 'sub', sub: true, text: 'Cambio: esce ' + pickOut.name + ', entra ' + pickIn.name + (affinity(pickIn.role, slotRole) < 1 ? ' — fuori ruolo' : '') },
     ]
-    const impact = subImpact(match.seedNumber, pickIn, m, userSquad)
+    const impact = subImpact(match.seedNumber, pickIn, m, onPitch)
     // side: senza questo campo il gol del fresco restava solo in cronaca,
     // invisibile a punteggio, classifica e statistiche del marcatore.
     if (impact) evs.push({ ...impact, side: userSide, sub: true })
@@ -292,6 +318,49 @@ export default function MatchScreen({ fixture, onDone }) {
     setPickOut(null)
     setPickIn(null)
     setSubsOpen(false)
+  }
+
+  /** Cambio modulo in corsa (G2): chi è in campo si riassetta sugli slot
+   *  nuovi e l'esito del riassetto è nel seed — ogni lavagnetta in corsa
+   *  porta un battito di disorganizzazione, o l'idea giusta. */
+  function changeFormation(newFormation) {
+    if (newFormation === activeFormation || phase !== 'live') return
+    const m = Math.min(Math.max(1, minute), 92)
+    const oldF = activeFormation
+    setCurrentFormation(newFormation)
+    setFormChangesOpen(false)
+    const rng = new Rng(seedFromString('formchange:' + match.seedNumber + ':' + m + ':' + newFormation))
+    const roll = rng.float()
+    const cnt = (f) => {
+      const c = { GK: 0, DF: 0, MF: 0, FW: 0 }
+      for (const s of FORMATIONS[f].slots) c[s] += 1
+      return c
+    }
+    const moreAttack = cnt(newFormation).FW + 0.4 * cnt(newFormation).MF > cnt(oldF).FW + 0.4 * cnt(oldF).MF
+    if (roll < 0.1) {
+      setSubEvents((s) => [...s, {
+        minute: m,
+        type: 'chance',
+        side: userSide,
+        form: true,
+        text: 'La lavagnetta lavora: riassetto sul ' + FORMATIONS[newFormation].name + ' e la prima occasione arriva subito',
+      }])
+    } else if (roll < 0.18) {
+      setSubEvents((s) => [...s, {
+        minute: m,
+        type: 'chance',
+        side: match.userIsHome ? 'away' : 'home',
+        form: true,
+        text: 'Riassetto sul ' + FORMATIONS[newFormation].name + ': per un battito la squadra resta scoperta. Che spavento',
+      }])
+    } else {
+      setSubEvents((s) => [...s, {
+        minute: m,
+        type: 'sub',
+        form: true,
+        text: 'Cambio modulo: ora si gioca sul ' + FORMATIONS[newFormation].name + (moreAttack ? ', più audace' : ', più prudente'),
+      }])
+    }
   }
 
   /** Minuti giocati: servono alle statistiche stagionali e alla progressione. */
@@ -323,7 +392,7 @@ export default function MatchScreen({ fixture, onDone }) {
   /** Rigori (Coppa): tiratori e portieri per la sfida dal dischetto. */
   const userClub = match.userIsHome ? home : away
   const oppClub = match.userIsHome ? away : home
-  const oppXI = bestXI((fitPlayersByClub[oppClub.id] || []).filter((p) => !p.youth))
+  const oppXI = match.userIsHome ? match.awayXI : match.homeXI
   const userGk = onPitch.find((p) => p.role === 'GK') || xi.find((p) => p.role === 'GK') || onPitch[0]
   const oppGk = oppXI.find((p) => p.role === 'GK') || oppXI[0]
 
@@ -346,6 +415,20 @@ export default function MatchScreen({ fixture, onDone }) {
             <p className="text-xs text-slate-500">
               Momenti chiave con 3 opzioni e {QTE_SECONDS} secondi per decidere, fino a {MAX_SUBS} cambi in corsa.
             </p>
+            <div className="mx-auto max-w-sm rounded-xl border border-slate-700 bg-pitch-900 p-4 text-left">
+              <p className="text-center text-xs text-slate-400">
+                Lavagnetta: <span className="font-semibold text-flood-300">{FORMATIONS[userTactics.formation].name}</span> · {userTactics.mentality} · pressing {userTactics.pressing} · linea {userTactics.line}
+              </p>
+              <div className="mt-3 space-y-1">
+                {['FW', 'MF', 'DF', 'GK'].map((r) => (
+                  <div key={r} className="flex items-center gap-2">
+                    <span className="w-7 text-[10px] font-bold tracking-widest text-slate-500">{r}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-300">{xi.filter((p) => p.slot === r).map((p) => p.name).join(' · ')}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-center text-xs text-slate-400">Loro si preparano col {FORMATIONS[(match.userIsHome ? match.awayTactics : match.homeTactics).formation].name}</p>
+            </div>
             <div className="mx-auto flex max-w-xs flex-col gap-2">
               <button
                 onClick={() => setPhase('live')}
@@ -443,7 +526,7 @@ export default function MatchScreen({ fixture, onDone }) {
                             }
                           >
                             <span className="min-w-0 flex-1 truncate font-semibold">{p.name}</span>
-                            <span className="ml-2 text-xs text-slate-400">{p.role} · OVR {p.ovr}</span>
+                            <span className="ml-2 text-xs text-slate-400">{p.role} · OVR {p.ovr}{affinity(p.role, pickOut.slot || pickOut.role) < 1 ? ' · fuori ruolo' : ''}</span>
                           </button>
                         </li>
                       ))}
@@ -468,6 +551,29 @@ export default function MatchScreen({ fixture, onDone }) {
                     </div>
                   </>
                 )}
+                <div className="mt-4 border-t border-slate-800 pt-3">
+                  <button
+                    onClick={() => setFormChangesOpen((o) => !o)}
+                    className="text-xs font-semibold text-slate-300 transition hover:text-flood-300"
+                  >
+                    {formChangesOpen ? 'Chiudi la lavagnetta in corsa' : 'Cambio modulo · in campo ora: ' + FORMATIONS[activeFormation].name}
+                  </button>
+                  {formChangesOpen && (
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {FORMATION_ORDER.filter((f) => f !== activeFormation).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => changeFormation(f)}
+                          className="rounded-lg border border-slate-700 px-2 py-2 text-xs transition hover:border-flood-400 hover:text-flood-300"
+                        >
+                          <span className="block font-semibold">{FORMATIONS[f].name}</span>
+                          <span className="block text-[10px] text-slate-500">{FORMATIONS[f].label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-500">Il riassetto è nel seed: ogni lavagnetta in corsa porta un battito di disorganizzazione — o l'idea giusta.</p>
+                </div>
                 <p className="mt-2 text-xs text-slate-500">L'orologio continua a correre: il calcio è anche questo.</p>
               </div>
             )}
@@ -506,6 +612,7 @@ export default function MatchScreen({ fixture, onDone }) {
                   <span className="mr-2 text-xs text-slate-500">{e.minute}'</span>
                   {e.qte && <span className="mr-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">QTE</span>}
                   {e.sub && <span className="mr-1 rounded bg-teal-500/20 px-1 text-[10px] text-teal-300">CAMBIO</span>}
+                  {e.form && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">MODULO</span>}
                   {e.type === 'pen' && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">RIG</span>}
                   {e.text}
                 </li>
@@ -545,6 +652,7 @@ export default function MatchScreen({ fixture, onDone }) {
                   <span className="mr-2 text-xs text-slate-500">{e.minute}'</span>
                   {e.qte && <span className="mr-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-300">QTE</span>}
                   {e.sub && <span className="mr-1 rounded bg-teal-500/20 px-1 text-[10px] text-teal-300">CAMBIO</span>}
+                  {e.form && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">MODULO</span>}
                   {e.type === 'pen' && <span className="mr-1 rounded bg-flood-400/20 px-1 text-[10px] text-flood-300">RIG</span>}
                   {e.text}
                 </li>
