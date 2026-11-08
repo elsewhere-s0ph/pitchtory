@@ -14,7 +14,7 @@ import { assignLeagueAbilities, abilityValueBonus } from './game/abilities'
 import { Rng, seedFromString } from './lib/rng'
 import { simulateMatch, matchSeed, matchSeedNumber, teamStrength } from './game/engine'
 import { DEFAULT_TACTICS } from './game/tactics'
-import { matchdayGate, sponsorPerRound, wagesPerRound, expansionInfo, penaltyPoints, federationMail } from './game/finance'
+import { matchdayGate, wagesPerRound, expansionInfo, penaltyPoints, federationMail, makeSponsorOffers, bestSponsorOffer, sponsorBonus } from './game/finance'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -196,6 +196,15 @@ function buildLeagueFixtures(careerId, clubs, scheduleSeed) {
 export async function createCareer({ seed, seedText, coachName, clubId, matchDuration = 'normal' }) {
   const universe = generateUniverse(seed)
   const moraleRng = new Rng((seed ^ 0x4b1d) >>> 0)
+  // Sponsor d'esordio (G3.1): il pool per il mister, la firma per gli AI.
+  const financeInit = {
+    season: universe.season,
+    settled: [],
+    rounds: [],
+    mails: [],
+    sponsor: null,
+    sponsorPool: makeSponsorOffers(seed, universe.season, universe.clubs.find((c) => c.id === clubId), null),
+  }
 
   const careerId = await db.careers.add({
     seed,
@@ -205,7 +214,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     season: universe.season,
     settings: { matchDuration },
     tactics: { ...DEFAULT_TACTICS },
-    finance: { season: universe.season, settled: [], rounds: [], mails: [] },
+    finance: financeInit,
     universeVersion: UNIVERSE_VERSION,
     scouts: { level: 1, focus: null },
     trophies: [],
@@ -233,6 +242,18 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     const cupDrawn = []
     while (cupDrawn.length < 15 && cupPool.length) cupDrawn.push(cupPool.splice(cupRng.int(0, cupPool.length - 1), 1)[0])
     await createCupFirstRound(careerId, [universe.clubs.find((c) => c.id === clubId), ...cupDrawn], seed, universe.season)
+    // I club AI firmano da soli: la base e denaro d'inizio stagione,
+    // subito in cassa. Il mister invece sceglie dal suo pool.
+    const aiSponsors = {}
+    for (const c of universe.clubs) {
+      if (c.id === clubId) continue
+      const deal = bestSponsorOffer(makeSponsorOffers(seed, universe.season, c, null))
+      if (!deal) continue
+      aiSponsors[c.id] = deal
+      await db.clubs.update(careerId + ':' + c.id, { budget: c.budget + deal.base })
+    }
+    financeInit.aiSponsors = aiSponsors
+    await db.careers.update(careerId, { finance: financeInit })
   })
 
   return careerId
@@ -308,6 +329,26 @@ export async function loadCareer(id) {
     career.finance = { season: career.season, settled: [], rounds: [], mails: [] }
     await db.careers.update(id, { finance: career.finance })
   }
+  // Migrazione lazy (G3.1): chi non ha ancora gli sponsor della stagione
+  // li cerca adesso — pool per il mister, firma immediata per i club AI.
+  // Le carriere in corsa sopravvivono: la base si incassa al primo giro.
+  if (!career.finance.sponsorPool) {
+    const userClubEntry = clubs.find((c) => c.id === career.clubId) || null
+    career.finance.sponsorPool = makeSponsorOffers(career.seed, career.season, userClubEntry, null)
+    const aiSponsors = {}
+    await db.transaction('rw', db.clubs, async () => {
+      for (const c of clubs) {
+        if (c.id === career.clubId || !c.key) continue
+        const deal = bestSponsorOffer(makeSponsorOffers(career.seed, career.season, c, null))
+        if (!deal) continue
+        aiSponsors[c.id] = deal
+        await db.clubs.update(c.key, { budget: c.budget + deal.base })
+      }
+    })
+    career.finance.aiSponsors = aiSponsors
+    career.finance.sponsor = career.finance.sponsor || null
+    await db.careers.update(id, { finance: career.finance })
+  }
 
   return { career, clubs, players, fixtures }
 }
@@ -348,9 +389,10 @@ export async function setLineup(careerId, lineup) {
   return lineup || null
 }
 
-/** La giornata paga (G3): biglietti a chi ospita, sponsor e stipendi a
- *  tutti. Idempotente sul registro della stagione: la stessa giornata
- *  non si incassa due volte, nemmeno per sbaglio. */
+/** La giornata paga (G3): biglietti a chi ospita, stipendi a tutti —
+ *  lo sponsor si firma a inizio stagione e la base si incassa lì (G3.1).
+ *  Idempotente sul registro della stagione: la stessa giornata non si
+ *  incassa due volte, nemmeno per sbaglio. */
 export async function settleRound(careerId, number) {
   const { career, clubs, players, fixtures } = await loadCareer(careerId)
   let fin = career.finance || { season: career.season, settled: [], rounds: [], mails: [] }
@@ -385,7 +427,7 @@ export async function settleRound(careerId, number) {
   }
 
   const deltas = {}
-  const row = { n: number, attendance: 0, tickets: 0, upkeep: 0, sponsor: 0, wages: 0 }
+  const row = { n: number, attendance: 0, tickets: 0, upkeep: 0, wages: 0 }
   const isLeagueRound = Number.isInteger(number)
 
   for (const f of fixtures.filter((x) => x.number === number && x.played)) {
@@ -402,11 +444,9 @@ export async function settleRound(careerId, number) {
   }
   if (isLeagueRound) {
     for (const c of clubs) {
-      const sponsor = sponsorPerRound(c)
       const wages = wagesPerRound(playersByClub[c.id])
-      deltas[c.key] = (deltas[c.key] || 0) + sponsor - wages
+      deltas[c.key] = (deltas[c.key] || 0) - wages
       if (c.id === career.clubId) {
-        row.sponsor = sponsor
         row.wages = wages
       }
     }
@@ -488,6 +528,26 @@ export async function loanPlayer(careerId, playerKey, fromClubKey, toClubKey, fe
       await db.clubs.update(club.key, { avgOvr: avg })
     }
   })
+}
+
+/** Firma lo sponsor della stagione (G3.1): la base finisce subito in
+ *  cassa, il bonus arriva solo se l obiettivo si riesce. Una firma a
+ *  stagione: una faccia sola sul petto. */
+export async function signSponsor(careerId, offerIndex) {
+  const career = await db.careers.get(careerId)
+  if (!career) throw new Error('Carriera non trovata')
+  const fin = career.finance
+  if (!fin || fin.season !== career.season) throw new Error('Nessuna trattativa aperta per questa stagione')
+  if (fin.sponsor) throw new Error('Lo sponsor e gia firmato: una facza sola sul petto')
+  const deal = (fin.sponsorPool || [])[offerIndex]
+  if (!deal) throw new Error("Offerta non trovata: l'agente ha gia riattaccato")
+  await db.transaction('rw', db.careers, db.clubs, async () => {
+    const club = await db.clubs.get(careerId + ':' + career.clubId)
+    if (!club) throw new Error('Club non trovato')
+    await db.clubs.update(club.key, { budget: club.budget + deal.base })
+    await db.careers.update(careerId, { finance: { ...fin, sponsor: deal } })
+  })
+  return deal
 }
 
 export async function deleteCareer(id) {
@@ -687,7 +747,7 @@ export async function endSeason(careerId) {
   const finRounds = (career.finance && career.finance.rounds) || []
   summary.finance = {
     tickets: finRounds.reduce((s, x) => s + (x.tickets || 0), 0),
-    sponsor: finRounds.reduce((s, x) => s + (x.sponsor || 0), 0),
+    sponsorBase: (career.finance && career.finance.sponsor) ? career.finance.sponsor.base : 0,
     upkeep: finRounds.reduce((s, x) => s + (x.upkeep || 0), 0),
     wages: finRounds.reduce((s, x) => s + (x.wages || 0), 0),
     expansions: (career.finance && career.finance.expansions) || 0,
@@ -703,6 +763,22 @@ export async function endSeason(careerId) {
   summary.userCupWinner = cupWinnerId === career.clubId
 
   const baseSeed = career.seed + ':' + career.season + ':'
+
+  // I risultati valgono oro (G3.1): chi li ha messi in bacheca a giugno
+  // trova piu sponsor alla porta. Posizioni e trofei contati sulla
+  // classifica finale, penalita comprese.
+  const promotedIds = new Set(((standingsByLeague[LEAGUES[1].id] || []).slice(0, 2)).map((r) => r.clubId))
+  const sponsorSeasonCtx = {}
+  for (const l of LEAGUES) {
+    ;(standingsByLeague[l.id] || []).forEach((rw, i) => {
+      sponsorSeasonCtx[rw.clubId] = {
+        position: i + 1,
+        champion: i === 0,
+        cupWinner: rw.clubId === cupWinnerId,
+        promoted: promotedIds.has(rw.clubId),
+      }
+    })
+  }
 
   // Statistiche sintetiche per i club AI, così anche la lega evolves:
   // i titolari giocano, le riserve rosicchiano, gli altri guardano.
@@ -783,6 +859,24 @@ export async function endSeason(careerId) {
       p.clubId = deal.toId
       await db.players.update(p.key, { clubId: deal.toId, contractUntil: deal.contractUntil })
     }
+    // Gli sponsor pagano i bonus (G3.1): gli obiettivi si contano sulla
+    // classifica appena chiusa, penalita comprese. Il sogno di giugno si
+    // incassa qui.
+    const seasonDeals = { ...((career.finance && career.finance.aiSponsors) || {}) }
+    if (career.finance && career.finance.sponsor) seasonDeals[career.clubId] = career.finance.sponsor
+    for (const c of clubs) {
+      const deal = seasonDeals[c.id]
+      if (!deal) continue
+      const bonus = sponsorBonus(deal, sponsorSeasonCtx[c.id] || {})
+      if (bonus) {
+        budgets[c.id] += bonus
+        if (c.id === career.clubId) {
+          summary.finance.sponsorBonus = bonus
+          summary.finance.endBalance = (summary.finance.endBalance || 0) + bonus
+        }
+      }
+    }
+
     for (const c of clubs) {
       if (c.budget !== budgets[c.id] && c.key) await db.clubs.update(c.key, { budget: budgets[c.id] })
     }
@@ -835,9 +929,33 @@ export async function endSeason(careerId) {
       }
     }
 
+    // Sponsor della stagione che viene (G3.1): serie e blasone sono
+    // gia quelli nuovi — un promosso riceve offerte da promosso. Il
+    // pool resta del mister, i club AI firmano e incassano la base.
+    const nextFinance = {
+      season: career.season + 1,
+      settled: [],
+      rounds: [],
+      mails: [],
+      sponsor: null,
+      sponsorPool: makeSponsorOffers(career.seed, career.season + 1, clubById[career.clubId], sponsorSeasonCtx[career.clubId] || null),
+    }
+    const nextAiSponsors = {}
+    for (const c of clubs) {
+      if (c.id === career.clubId) continue
+      const deal = bestSponsorOffer(makeSponsorOffers(career.seed, career.season + 1, c, sponsorSeasonCtx[c.id] || null))
+      if (!deal) continue
+      nextAiSponsors[c.id] = deal
+      budgets[c.id] += deal.base
+    }
+    nextFinance.aiSponsors = nextAiSponsors
+    for (const c of clubs) {
+      if (c.budget !== budgets[c.id] && c.key) await db.clubs.update(c.key, { budget: budgets[c.id] })
+    }
+
     await db.careers.update(careerId, {
       season: career.season + 1,
-      finance: { season: career.season + 1, settled: [], rounds: [], mails: [] },
+      finance: nextFinance,
       trophies: [
         ...(career.trophies || []),
         ...LEAGUES.map((l) => {
