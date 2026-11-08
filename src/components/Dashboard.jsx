@@ -1,6 +1,7 @@
 
 
 
+
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
@@ -11,6 +12,7 @@ import { simulateMatch, matchSeed } from '../game/engine'
 import MatchScreen from './MatchScreen'
 import PlayerCard from './PlayerCard'
 import TransferMarket from './TransferMarket'
+import TacticsBoard from './TacticsBoard'
 import pkg from '../../package.json'
 
 const ROLE_LABELS = { GK: 'Portieri', DF: 'Difensori', MF: 'Centrocampisti', FW: 'Attaccanti' }
@@ -19,6 +21,7 @@ const DURATIONS = { short: 'Compressa (1-2 min)', normal: 'Rilassata (5-6 min)',
 const TABS = [
   { id: 'home', label: 'Home' },
   { id: 'squad', label: 'Rosa' },
+  { id: 'tactics', label: 'Lavagnetta' },
   { id: 'market', label: 'Mercato' },
   { id: 'calendar', label: 'Calendario' },
   { id: 'club', label: 'Club' },
@@ -407,6 +410,15 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
             <h3 className="mb-2 text-sm uppercase tracking-wider text-teal-400">Primavera</h3>
             <SquadList list={youth} season={career.season} round={round} onOpen={setCardPlayer} />
           </div>
+        )}
+
+        {tab === 'tactics' && (
+          <TacticsBoard
+            career={career}
+            squad={squad}
+            round={round}
+            onDone={() => load(career.id)}
+          />
         )}
 
         {tab === 'market' && (
