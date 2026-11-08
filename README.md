@@ -2,11 +2,12 @@
 
 
 
+
 # Pitchtory ⚽
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G1 — La Piramide completa (v0.15.2): due leghe con promozioni e retrocessioni, Coppa Nazionale Trofeo Bellandi a sedici infrasettimanale con rigori giocati, squalifiche, rosa leggibile su mobile — più motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G2 — Banco e Lavagnetta.
+> Stato: G1 — La Piramide completa (vv0.16.0): due leghe con promozioni e retrocessioni, Coppa Nazionale Trofeo Bellandi a sedici infrasettimanale con rigori giocati, squalifiche, rosa leggibile su mobile — più motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G2 — Banco e Lavagnetta.
 
 ## Sviluppo
 
@@ -84,6 +85,29 @@ Due serie, una coppa, e le conseguenze che vengono con entrambe:
 - **Squalifiche**: espulsione = una giornata di stop, quinta ammonizione = una giornata e il contatore riparte. Vale per chiunque scenda in campo, QTE o simulazione che sia.
 - **Classifiche separate** per lega, calendari distinti: le partite di Coppa non toccano i campionati.
 - **Rosa leggibile su mobile**: la riga del giocatore va su due righe al telefono (il nome si legge per intero), una riga al desktop.
+
+## Banco e Lavagnetta (G2)
+
+La forza non è più una media di OVR: è l'undici che scende in campo. Sei moduli
+(4-4-2, 4-3-3, 4-2-3-1, 3-5-2, 3-4-3, 5-3-2) con slot per ruolo e dazio per chi
+gioca fuori posizione (adiacente 88%, opposto 72%, portiere irrinunciabile). Il
+matchup è solo aritmetica: attacco contro difesa, e chi la spunta a centrocampo —
+un 5-3-2 toglie palla al 4-3-3, un 3-5-2 soffoca il 4-4-2.
+
+Tre assi di tattiche di squadra, salvati nella carriera e modificabili dal tab
+Lavagnetta (o in corsa, cambiando modulo dal pannello cambi):
+
+- **Mentalità** — Prudente (fatti e subiti -15%), Equilibrata, Ardita (+15% fatti, +18% subiti).
+- **Pressing** — Basso (meno occasioni e molte meno carte), Normale, Aggressivo (+occasioni, +50% ammonizioni, condizione che brucia).
+- **Linea difensiva** — Bassa (il catenaccio: -12% subiti), Normale, Alta (+occasioni, ma contropiedi).
+
+L'AI la sua lavagnetta se la scrive da sola: modulo che valorizza la rosa, stile
+dell'allenatore stabile nell'id del club, mente e cuore dal rapporto di forza in
+campo. E da G2 marcatori, ammoniti, infortunati e protagonisti dei QTE escono
+SOLO dagli undici in campo: il gol della vittoria non lo segna più chi guardava
+dalla panchina. Le carriere in corso sopravvivono: la lavagnetta arriva con un
+default equilibrato, niente nuova carriera richiesta.
+
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
