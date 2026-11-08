@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { askingPrice, respondToOffer, aiBidFor, boughtContract } from '../game/market'
-import { transferPlayer } from '../db'
+import { transferPlayer, loanPlayer } from '../db'
+import { loanDeal, MAX_LOANS_IN } from '../game/finance'
 import { ABILITIES } from '../game/abilities'
 
 const ROLES = ['Tutti', 'GK', 'DF', 'MF', 'FW']
@@ -86,6 +87,7 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
   const [bid, setBid] = useState(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)
+  const [loanResult, setLoanResult] = useState(null)
 
   const clubById = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c])), [clubs])
   const playersByClub = useMemo(() => {
@@ -110,7 +112,8 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
   const userSeniors = seniorsByClub[userClub.id] || 0
   const marketWindow = next ? (next.number === 1 ? 'estivo' : next.number === 20 ? 'invernale' : null) : null
   const currentRound = next ? next.number : 39
-  const isBuyDisabled = userSeniors >= 30
+  const loansIn = players.filter((p) => p.clubId === userClub.id && p.loanFrom && p.loanFrom !== userClub.id).length
+  const isBuyDisabled = userSeniors >= 30 || userClub.budget < 0
   const isSellDisabled = userSeniors <= 16
 
   const buyList = useMemo(() => {
@@ -132,6 +135,7 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
     setResponse(null)
     setBid(null)
     setOfferInput('')
+    setLoanResult(null)
   }
 
   function openBuy(p) {
@@ -140,6 +144,7 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
     setOfferInput(((askingById[p.id] || 0) / 1000000).toFixed(2).replace('.', ','))
     setResponse(null)
     setBid(null)
+    setLoanResult(null)
   }
 
   function openSell(p) {
@@ -167,6 +172,27 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
       await onDone()
     } catch (err) {
       setResponse({ status: 'rejected', message: 'Non se ne fa nulla: ' + (err && err.message ? err.message : 'errore') })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function askLoan() {
+    if (!sheet) return
+    const ownerSquad = playersByClub[sheet.clubId] || []
+    setLoanResult(loanDeal(career.seed, career.season, sheet, ownerSquad))
+  }
+
+  async function completeLoan() {
+    if (!sheet || !loanResult || !loanResult.ok || busy) return
+    setBusy(true)
+    try {
+      await loanPlayer(career.id, sheet.key, clubById[sheet.clubId].key, userClub.key, loanResult.fee)
+      setNotice({ ok: true, text: 'Prestito chiuso: ' + sheet.name + ' arriva fino a fine stagione. Trattalo bene, non è tuo.' })
+      closeSheet()
+      await onDone()
+    } catch (err) {
+      setNotice({ ok: false, text: 'Prestito fallito: ' + (err && err.message ? err.message : 'errore') })
     } finally {
       setBusy(false)
     }
@@ -226,7 +252,7 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
           Mercato {marketWindow} aperto: si chiude giocando la giornata {next.number}.
         </p>
         <p className="mt-1 text-xs text-pitch-300">
-          Budget: <span className="font-semibold text-teal-300">{fmtMoney(userClub.budget)}</span>
+          Cassa: <span className="font-semibold text-teal-300">{fmtMoney(userClub.budget)}</span>
           {' · '}Rosa: {userSeniors}/30 senior
         </p>
       </div>
@@ -269,7 +295,9 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
           />
           {isBuyDisabled ? (
             <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
-              Rosa completa: 30 senior. Prima di comprare, vendi qualcuno.
+              {userClub.budget < 0
+                ? 'Mercato bloccato dalla Federazione: la cassa è in rosso. Vendi, o aspetta gli incassi delle giornate.'
+                : 'Rosa completa: 30 senior. Prima di comprare, vendi qualcuno.'}
             </p>
           ) : null}
           <ul className="overflow-hidden rounded-2xl border border-pitch-700 bg-pitch-900">
@@ -298,7 +326,7 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
           ) : null}
           <ul className="overflow-hidden rounded-2xl border border-pitch-700 bg-pitch-900">
             {sellList.map((p) => (
-              <SellRow key={p.id} p={p} onOpen={() => openSell(p)} disabled={isSellDisabled} />
+              <SellRow key={p.id} p={p} onOpen={() => openSell(p)} disabled={isSellDisabled || !!p.loanFrom} />
             ))}
           </ul>
           <p className="text-center text-[10px] text-pitch-500">Le offerte arrivano dai club AI a cui manca proprio quel ruolo. Niente regali.</p>
@@ -342,6 +370,26 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
                   Prezzo richiesto: <span className="font-bold text-teal-300">{fmtMillions(askingById[sheet.id] || 0)}</span>
                   {' · '}Stipendio: {fmtMoney(sheet.wage || 0)}/stagione
                 </p>
+                {!isBuyDisabled && !sheet.loanFrom && loansIn < MAX_LOANS_IN ? (
+                  !loanResult ? (
+                    <button
+                      onClick={askLoan}
+                      disabled={busy}
+                      className="w-full rounded-xl border border-pitch-600 px-3 py-2 text-sm font-semibold text-pitch-200 transition hover:border-teal-400"
+                    >Chiedi il prestito secco (torna a fine stagione)</button>
+                  ) : loanResult.ok ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={completeLoan}
+                        disabled={busy || loanResult.fee > userClub.budget}
+                        className="flex-1 rounded-xl bg-teal-400 px-3 py-2.5 text-sm font-bold text-pitch-950 shadow-[0_0_20px_rgba(47,181,110,0.25)] transition hover:shadow-[0_0_28px_rgba(47,181,110,0.35)] active:scale-[0.98] disabled:opacity-40"
+                      >Conferma il prestito · {fmtMillions(loanResult.fee)}</button>
+                      <button onClick={() => setLoanResult(null)} className="flex-1 rounded-xl border border-pitch-700 px-3 py-2.5 text-sm font-semibold text-pitch-300">Annulla</button>
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{loanResult.reason}</p>
+                  )
+                ) : null}
                 {isBuyDisabled ? (
                   <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
                     Rosa completa: prima di comprare, vendi.
@@ -410,7 +458,11 @@ export default function TransferMarket({ career, userClub, clubs, players, next,
                 <p className="text-sm text-pitch-300">
                   Valore di mercato: <span className="font-bold text-teal-300">{fmtMillions(sheet.value)}</span>
                 </p>
-                {isSellDisabled ? (
+                {sheet.loanFrom ? (
+                  <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
+                    In prestito: la roba degli altri non si vende. A fine stagione torna al suo club.
+                  </p>
+                ) : isSellDisabled ? (
                   <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
                     Rosa al limite: 16 senior. Vendi solo dopo aver comprato.
                   </p>
