@@ -16,6 +16,7 @@ import { simulateMatch, matchSeed, matchSeedNumber, teamStrength } from './game/
 import { DEFAULT_TACTICS } from './game/tactics'
 import { matchdayGate, wagesPerRound, expansionInfo, penaltyPoints, federationMail, makeSponsorOffers, bestSponsorOffer, sponsorBonus } from './game/finance'
 import { managerNameFor, sackProb, offerChance, applyProb } from './game/jobs'
+import { SCOUT_REPORT_COST } from './game/scouting'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -218,6 +219,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     finance: financeInit,
     universeVersion: UNIVERSE_VERSION,
     scouts: { level: 1, focus: null },
+    scouted: [],
     trophies: [],
     createdAt: new Date().toISOString(),
   })
@@ -357,6 +359,11 @@ export async function loadCareer(id) {
   if (!career.jobs) {
     career.jobs = { offers: [], applied: [], invited: [], notices: [] }
     await db.careers.update(id, { jobs: career.jobs })
+  }
+  // G4: il cassetto dei report sugli avversari (Occhi sui Grandi).
+  if (!career.scouted) {
+    career.scouted = []
+    await db.careers.update(id, { scouted: career.scouted })
   }
   const noManager = clubs.filter((c) => c.id !== career.clubId && typeof c.manager !== 'string')
   if (noManager.length) {
@@ -843,6 +850,24 @@ export async function setScoutFocus(careerId, focus) {
   if (!career) return
   await db.careers.update(careerId, { scouts: { ...(career.scouts || { level: 1, focus: null }), focus: focus || null } })
 }
+
+/** Occhi sui Grandi (G4): report su un senior avversario. Costo fisso,
+ *  verità permanente: OVR, attributi e abilità di un uomo, per sempre. */
+export async function scoutPlayer(careerId, playerId) {
+  await db.transaction('rw', db.careers, db.clubs, db.players, async () => {
+    const career = await db.careers.get(careerId)
+    if (!career) throw new Error('Carriera non trovata')
+    const player = await db.players.get(careerId + ':' + playerId)
+    if (!player) throw new Error('Giocatore non trovato')
+    if (player.clubId === career.clubId) throw new Error('Quello è già della tua squadra: i tuoi li vedi gratis')
+    if ((career.scouted || []).includes(playerId)) throw new Error('Report già nel cassetto: la verità non si paga due volte')
+    const club = await db.clubs.get(careerId + ':' + career.clubId)
+    if (!club || club.budget < SCOUT_REPORT_COST) throw new Error('Cassa insufficiente: il report costa ' + SCOUT_REPORT_COST / 1000 + 'k')
+    await db.clubs.update(club.key, { budget: club.budget - SCOUT_REPORT_COST })
+    await db.careers.update(careerId, { scouted: [...(career.scouted || []), playerId] })
+  })
+}
+
 
 /**
  * Chiude la stagione: assegna il titolo, fa crescere (o invecchiare) i

@@ -31,3 +31,43 @@ export function scoutedPotential(player, scouts) {
   const err = scoutError(scouts)
   return clamp(player.potential + rng.int(-err, err), player.ovr, 99)
 }
+
+/**
+ * Occhi sui Grandi (G4): gli osservatori leggono anche i seniori degli
+ * altri club — da lontano, col binocolo della rete. Senza report l'OVR
+ * del mercato è una stima; il report dice la verità, che non si scorda.
+ */
+
+/** Costo di un report su un singolo avversario: la verità si paga. */
+export const SCOUT_REPORT_COST = 100000
+
+/** Errore di lettura sui seniori: si vedono giocare ogni settimana, e
+ *  quindi si leggono meglio della Primavera — ma la verità non è gratis. */
+export function seniorScoutError(scouts) {
+  const err = [8, 6, 4, 3, 2][scoutLevel(scouts) - 1]
+  const focus = scouts && typeof scouts === 'object' ? scouts.focus : null
+  return focus ? Math.max(1, err - 1) : err
+}
+
+/** OVR stimato di un senior avversario: deterministico per (giocatore,
+ *  livello, focus) come le letture della Primavera — potenziare la rete
+ *  rilegge tutti, il report no. */
+export function scoutedOvr(player, scouts) {
+  const level = scoutLevel(scouts)
+  const focus = (scouts && typeof scouts === 'object' && scouts.focus) || 'no'
+  const err = seniorScoutError(scouts)
+  const rng = new Rng(seedFromString(String(player.id) + ':g4ovr:' + level + ':' + focus))
+  return clamp(player.ovr + rng.int(-err, err), 40, 99)
+}
+
+/** Attributi stimati (G4): le barre della scheda avversaria prima del
+ *  report. Deterministici per (giocatore, livello): il tavolo non balla. */
+export function scoutedAttrs(player, scouts) {
+  const level = scoutLevel(scouts)
+  const rng = new Rng(seedFromString(String(player.id) + ':g4attr:' + level))
+  const err = [2, 2, 1, 1, 1][level - 1]
+  const real = player.attributes || {}
+  const out = {}
+  for (const k of Object.keys(real)) out[k] = clamp(real[k] + rng.int(-err, err), 1, 20)
+  return out
+}
