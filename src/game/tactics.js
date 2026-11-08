@@ -76,11 +76,10 @@ export function bestXIFor(formationId, squad) {
   return xi
 }
 
-/** Forza dell'undici schierato: media dell'OVR efficace (fuori ruolo =
- *  dazio), morale di chi è in campo e abilità da leader. */
-export function teamStrengthFor(club, squad, formationId) {
-  const xi = bestXIFor(formationId, squad)
-  if (!xi.length) return 40
+/** Forza di un undici già schierato (G2.1): riconosce anche le scelte del
+ *  mister — dazio di ruolo, morale e leader contano uguale. */
+export function strengthOfXI(club, xi) {
+  if (!xi || !xi.length) return 40
   let sum = 0
   let morale = 0
   let lead = 0
@@ -91,6 +90,87 @@ export function teamStrengthFor(club, squad, formationId) {
     if (hasAbility(p, 'fuoriclasse')) lead += 1.5
   }
   return (sum / xi.length) * (0.92 + 0.08 * (morale / xi.length / 100)) + lead
+}
+
+/** Forza dell'undici schierato: media dell'OVR efficace (fuori ruolo =
+ *  dazio), morale di chi è in campo e abilità da leader. */
+export function teamStrengthFor(club, squad, formationId) {
+  return strengthOfXI(club, bestXIFor(formationId, squad))
+}
+
+/** L'undici scelto dal mister (G2.1): le scelte sono undici id allineati
+ *  agli slot del modulo, null dove decide lo staff. Chi non c'è più
+ *  (ceduto, infermeria, squalifica) torna automatico: la lavagnetta non
+ *  costringe mai a giocare in dieci. Deterministica come tutto il resto. */
+export function lineupXI(formationId, squad, picks) {
+  const slots = (FORMATIONS[formationId] || FORMATIONS[FORMATION_ORDER[0]]).slots
+  const avail = squad.filter((p) => !p.youth)
+  if (!Array.isArray(picks) || picks.length !== slots.length) return bestXIFor(formationId, squad)
+  const byId = new Map(avail.map((p) => [p.id, p]))
+  const xi = []
+  const used = new Set()
+  slots.forEach((slot, i) => {
+    const p = picks[i] != null ? byId.get(picks[i]) : null
+    if (p && !used.has(p.id)) {
+      used.add(p.id)
+      xi.push({ ...p, slot })
+    } else {
+      xi.push(null)
+    }
+  })
+  for (let i = 0; i < xi.length; i++) {
+    if (xi[i]) continue
+    let best = null
+    for (const p of avail) {
+      if (used.has(p.id)) continue
+      const aff = affinity(p.role, slots[i])
+      const eff = p.ovr * aff
+      if (!best || eff > best.eff + 1e-9 || (Math.abs(eff - best.eff) <= 1e-9 && aff > best.aff)) {
+        best = { p, eff, aff }
+      }
+    }
+    if (best) {
+      used.add(best.p.id)
+      xi[i] = { ...best.p, slot: slots[i] }
+    }
+  }
+  return xi.filter(Boolean)
+}
+
+/** Cambio modulo con i titolari scelti: ognuno resta titolare nello slot
+ *  che gli va meglio nel modulo nuovo. Chi non trova posto torna allo
+ *  staff — mai pensioni d'ufficio, mai favoritismi. */
+export function remapPicks(formationId, squad, picks) {
+  const slots = (FORMATIONS[formationId] || FORMATIONS[FORMATION_ORDER[0]]).slots
+  if (!Array.isArray(picks)) return new Array(slots.length).fill(null)
+  const avail = squad.filter((p) => !p.youth)
+  const byId = new Map(avail.map((p) => [p.id, p]))
+  const chosen = []
+  for (const id of picks) {
+    const p = id != null ? byId.get(id) : null
+    if (p && !chosen.some((c) => c.id === p.id)) chosen.push(p)
+  }
+  const bestAff = (p) => {
+    let m = 0
+    for (const s of slots) m = Math.max(m, affinity(p.role, s))
+    return m
+  }
+  chosen.sort((a, b) => bestAff(b) - bestAff(a) || (a.id < b.id ? -1 : 1))
+  const out = new Array(slots.length).fill(null)
+  for (const p of chosen) {
+    let bi = -1
+    let be = -1
+    slots.forEach((s, i) => {
+      if (out[i] !== null) return
+      const eff = p.ovr * affinity(p.role, s)
+      if (eff > be + 1e-9) {
+        be = eff
+        bi = i
+      }
+    })
+    if (bi >= 0) out[bi] = p.id
+  }
+  return out
 }
 
 /** Conteggi per reparto di un modulo. */

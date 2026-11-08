@@ -24,7 +24,7 @@
  */
 import { Rng } from '../lib/rng'
 import { hasAbility } from './abilities'
-import { bestXIFor, bestFormationFor, teamStrengthFor, formationEdge, aiTactics, xgMultiplier, cardsMultiplier } from './tactics'
+import { affinity, bestXIFor, bestFormationFor, teamStrengthFor, strengthOfXI, formationEdge, aiTactics, xgMultiplier, cardsMultiplier } from './tactics'
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
@@ -84,9 +84,16 @@ function weightedPick(rng, items, weightFn) {
 
 const ROLE_GOAL_WEIGHT = { GK: 0.03, DF: 1, MF: 4, FW: 10 }
 
+/** OVR efficace: il dazio di chi gioca fuori ruolo (G2.1) pesa anche sul
+ *  singolo episodio, non solo sulla forza della squadra. Senza slot (usi
+ *  vecchi) vale l'OVR grezzo. */
+function effOvr(p) {
+  return p.ovr * (p.slot ? affinity(p.role, p.slot) : 1)
+}
+
 function pickScorer(rng, squad) {
   return weightedPick(rng, squad, (p) => {
-    let w = ROLE_GOAL_WEIGHT[p.role] * (p.ovr / 70)
+    let w = ROLE_GOAL_WEIGHT[p.role] * (effOvr(p) / 70)
     if (hasAbility(p, 'bomber')) w *= 1.7
     if (hasAbility(p, 'fuoriclasse')) w *= 2
     return w
@@ -122,7 +129,7 @@ function outcomeRng(seedNumber, momentId, choiceId) {
  * La cronaca base è identica a prescindere: i momenti chiave aggiungono
  * gol ed eventi sopra di essa.
  */
-export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoments = false, seedNumber = 0, userClubId = null, homeTactics = null, awayTactics = null } = {}) {
+export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoments = false, seedNumber = 0, userClubId = null, homeTactics = null, awayTactics = null, homeXI: pickedHomeXI = null, awayXI: pickedAwayXI = null } = {}) {
   const homeSquad = (playersByClubId[homeClub.id] || []).filter((p) => !p.youth)
   const awaySquad = (playersByClubId[awayClub.id] || []).filter((p) => !p.youth)
 
@@ -132,8 +139,13 @@ export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoment
   // spostano i gol attesi: la lavagnetta conta, eccome.
   const homeForm = (homeTactics && homeTactics.formation) || bestFormationFor(homeClub, homeSquad)
   const awayForm = (awayTactics && awayTactics.formation) || bestFormationFor(awayClub, awaySquad)
-  const shBase = teamStrengthFor(homeClub, homeSquad, homeForm)
-  const saBase = teamStrengthFor(awayClub, awaySquad, awayForm)
+  // G2.1 — l'undici può sceglierlo il mister, slot per slot: le sue
+  // scelte battono lo staff, e la forza segue chi scende davvero in
+  // campo (dazio di posizione compreso).
+  const homeXI = pickedHomeXI && pickedHomeXI.length ? pickedHomeXI : bestXIFor(homeForm, homeSquad)
+  const awayXI = pickedAwayXI && pickedAwayXI.length ? pickedAwayXI : bestXIFor(awayForm, awaySquad)
+  const shBase = strengthOfXI(homeClub, homeXI)
+  const saBase = strengthOfXI(awayClub, awayXI)
   const hT = homeTactics || aiTactics(homeClub, homeSquad, saBase, true)
   const aT = awayTactics || aiTactics(awayClub, awaySquad, shBase, false)
   const modsH = xgMultiplier(hT)
@@ -146,11 +158,9 @@ export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoment
   const goalsH = Math.min(poisson(rng, xgH), 7)
   const goalsA = Math.min(poisson(rng, xgA), 7)
 
-  // Gli undici scesi in campo: da qui in poi marcatori, ammonizioni,
-  // infortuni e momenti chiave riguardano solo chi è davvero in campo.
-  const homeXI = bestXIFor(hT.formation, homeSquad)
-  const awayXI = bestXIFor(aT.formation, awaySquad)
-
+  // Gli undici scesi in campo sono già schierati (v. sopra): da qui in
+  // poi marcatori, ammonizioni, infortuni e momenti chiave riguardano
+  // solo chi è davvero in campo.
   const events = []
 
   const addGoal = (side, club, squad) => {
