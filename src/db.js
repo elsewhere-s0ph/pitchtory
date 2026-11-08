@@ -245,7 +245,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     const cupDrawn = []
     while (cupDrawn.length < 15 && cupPool.length) cupDrawn.push(cupPool.splice(cupRng.int(0, cupPool.length - 1), 1)[0])
     await createCupFirstRound(careerId, [universe.clubs.find((c) => c.id === clubId), ...cupDrawn], seed, universe.season)
-    // I club AI firmano da soli: la base e denaro d'inizio stagione,
+    // I club AI firmano da soli: la base è denaro d'inizio stagione,
     // subito in cassa. Il mister invece sceglie dal suo pool.
     const aiSponsors = {}
     for (const c of universe.clubs) {
@@ -630,16 +630,16 @@ export async function loanPlayer(careerId, playerKey, fromClubKey, toClubKey, fe
 }
 
 /** Firma lo sponsor della stagione (G3.1): la base finisce subito in
- *  cassa, il bonus arriva solo se l obiettivo si riesce. Una firma a
+ *  cassa, il bonus arriva solo se l'obiettivo si riesce. Una firma a
  *  stagione: una faccia sola sul petto. */
 export async function signSponsor(careerId, offerIndex) {
   const career = await db.careers.get(careerId)
   if (!career) throw new Error('Carriera non trovata')
   const fin = career.finance
   if (!fin || fin.season !== career.season) throw new Error('Nessuna trattativa aperta per questa stagione')
-  if (fin.sponsor) throw new Error('Lo sponsor e gia firmato: una facza sola sul petto')
+  if (fin.sponsor) throw new Error('Lo sponsor è già firmato: una faccia sola sul petto')
   const deal = (fin.sponsorPool || [])[offerIndex]
-  if (!deal) throw new Error("Offerta non trovata: l'agente ha gia riattaccato")
+  if (!deal) throw new Error("Offerta non trovata: l'agente ha già riattaccato")
   await db.transaction('rw', db.careers, db.clubs, async () => {
     const club = await db.clubs.get(careerId + ':' + career.clubId)
     if (!club) throw new Error('Club non trovato')
@@ -680,7 +680,7 @@ export async function applyForJob(careerId, clubId) {
 
 /** Firma la nuova panchina (G5.1): si lascia il club attuale (che assume
  *  subito un nome nuovo) e si prende la sedia libera. Lo sponsor si
- *  rinegozia col club che arriva: la base l ha già incassata lui. */
+ *  rinegozia col club che arriva: la base l'ha già incassata lui. */
 export async function takeJob(careerId, clubId) {
   const { career, clubs } = await loadCareer(careerId)
   const club = clubs.find((c) => c.id === clubId)
@@ -972,8 +972,8 @@ export async function endSeason(careerId) {
   const baseSeed = career.seed + ':' + career.season + ':'
 
   // I risultati valgono oro (G3.1): chi li ha messi in bacheca a giugno
-  // trova piu sponsor alla porta. Posizioni e trofei contati sulla
-  // classifica finale, penalita comprese.
+  // trova più sponsor alla porta. Posizioni e trofei contati sulla
+  // classifica finale, penalità comprese.
   const promotedIds = new Set(((standingsByLeague[LEAGUES[1].id] || []).slice(0, 2)).map((r) => r.clubId))
   const sponsorSeasonCtx = {}
   for (const l of LEAGUES) {
@@ -1067,7 +1067,7 @@ export async function endSeason(careerId) {
       await db.players.update(p.key, { clubId: deal.toId, contractUntil: deal.contractUntil })
     }
     // Gli sponsor pagano i bonus (G3.1): gli obiettivi si contano sulla
-    // classifica appena chiusa, penalita comprese. Il sogno di giugno si
+    // classifica appena chiusa, penalità comprese. Il sogno di giugno si
     // incassa qui.
     const seasonDeals = { ...((career.finance && career.finance.aiSponsors) || {}) }
     if (career.finance && career.finance.sponsor) seasonDeals[career.clubId] = career.finance.sponsor
@@ -1137,7 +1137,7 @@ export async function endSeason(careerId) {
     }
 
     // Sponsor della stagione che viene (G3.1): serie e blasone sono
-    // gia quelli nuovi — un promosso riceve offerte da promosso. Il
+    // già quelli nuovi — un promosso riceve offerte da promosso. Il
     // pool resta del mister, i club AI firmano e incassano la base.
     const nextFinance = {
       season: career.season + 1,
