@@ -4,8 +4,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
-import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, signSponsor, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
+import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, signSponsor, applyForJob, takeJob, declineOffer, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
 import { expansionInfo } from '../game/finance'
+import { seatHeat } from '../game/jobs'
 import { scoutedPotential, scoutError } from '../game/scouting'
 import { computeStandings } from '../game/standings'
 import { LEAGUES } from '../game/universe'
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'market', label: 'Mercato' },
   { id: 'calendar', label: 'Calendario' },
   { id: 'club', label: 'Club' },
+  { id: 'jobs', label: 'Panchina' },
   { id: 'settings', label: 'Opzioni' },
 ]
 
@@ -157,6 +159,118 @@ function Standings({ rows, userClubId }) {
   )
 }
 
+/** Il mercato delle panchine (G5.1): offerte, sedie libere e notizie.
+ *  Vale per il mister con la poltrona e per quello con la cartella. */
+function JobsPanel({ career, clubs, clubById, standingsByLeague, userClub, heat, onApply, onTake, onDecline }) {
+  const jobs = (career && career.jobs) || { offers: [], applied: [], invited: [], notices: [] }
+  const appliedTo = new Set(jobs.applied || [])
+  const invitedTo = new Set(jobs.invited || [])
+  const offers = (jobs.offers || []).map((o) => ({ offer: o, club: clubById[o.clubId] })).filter((x) => x.club)
+  const notices = [...(jobs.notices || [])].reverse().slice(0, 10)
+  const vacancies = clubs
+    .filter((c) => !c.manager && (!userClub || c.id !== userClub.id))
+    .sort((a, b) => (b.reputation || 0) - (a.reputation || 0))
+  const posOf = (c) => {
+    const rows = standingsByLeague[c.leagueId] || []
+    const i = rows.findIndex((r) => r.clubId === c.id)
+    return i >= 0 ? i + 1 : null
+  }
+  const leagueOf = (c) => (LEAGUES.find((l) => l.id === c.leagueId) || {}).name || ''
+  const heatColor = heat
+    ? heat.label === 'poltrona comoda'
+      ? 'text-teal-300'
+      : heat.label === 'sedia che scotta'
+        ? 'text-amber-300'
+        : heat.label === 'brace viva'
+          ? 'text-orange-300'
+          : 'text-red-400'
+    : ''
+  return (
+    <div className="grid animate-fade-up gap-3 sm:grid-cols-2">
+      {userClub && heat && (
+        <Card title="La tua panchina">
+          <div className="text-sm text-slate-300">
+            <p>Stato della sedia: <b className={heatColor}>{heat.label}</b></p>
+            <p className="mt-1 text-xs text-slate-400">
+              {heat.gap > 0
+                ? 'Sei ' + heat.gap + ' posizioni sotto a quanto il blasone prometteva: la dirigenza comincia a guardarti storto.'
+                : 'In linea con il blasone, o meglio: la poltrona regge.'}
+            </p>
+            <p className="mt-2 text-[10px] text-slate-500">
+              Regole della casa: dalla giornata 12, se sei 14° o peggio e almeno 3 posizioni sotto l attesa del blasone, l esonero diventa possibile. I club AI ragionano uguale, solo prima: dalla 10ª.
+            </p>
+          </div>
+        </Card>
+      )}
+      {offers.length > 0 && (
+        <Card title="Offerte sul tavolo">
+          <ul className="space-y-2">
+            {offers.map(({ offer, club }) => (
+              <li key={offer.clubId} className="rounded-lg border border-teal-500/40 bg-teal-500/5 p-2.5 text-sm">
+                <p className="font-semibold text-teal-200">{club.name} <span className="text-xs text-slate-400">({leagueOf(club)})</span></p>
+                <p className="mt-0.5 text-xs text-slate-300">{offer.text}</p>
+                <div className="mt-2 flex gap-1.5">
+                  <button onClick={() => onTake(club.id, club.name)} className="flex-1 rounded-lg bg-teal-500 px-2 py-1.5 text-xs font-semibold text-pitch-950 hover:bg-teal-400">
+                    Accetta la panchina
+                  </button>
+                  <button onClick={() => onDecline(club.id)} className="flex-1 rounded-lg border border-slate-600 px-2 py-1.5 text-xs text-slate-300 hover:border-red-400 hover:text-red-300">
+                    Rifiuta
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      <Card title={'Panchine libere (' + vacancies.length + ')'}>
+        {vacancies.length ? (
+          <ul className="space-y-2">
+            {vacancies.map((c) => (
+              <li key={c.id} className="rounded-lg border border-slate-700 p-2.5 text-sm">
+                <p className="font-semibold text-slate-200">{c.name} <span className="text-xs text-slate-400">({leagueOf(c)})</span></p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {posOf(c) ? posOf(c) + '° posto' : 'posizione: —'} · blasone {c.reputation} · rosa {c.avgOvr}
+                  {c.sackRound ? ' · libera dalla giornata ' + c.sackRound : ''}
+                </p>
+                {invitedTo.has(c.id) ? (
+                  <button onClick={() => onTake(c.id, c.name)} className="mt-2 w-full rounded-lg bg-teal-500 px-2 py-1.5 text-xs font-semibold text-pitch-950 hover:bg-teal-400">
+                    Firma la panchina
+                  </button>
+                ) : appliedTo.has(c.id) ? (
+                  <p className="mt-2 text-center text-xs text-slate-500">Curriculum già inviato: attendere, come tutti.</p>
+                ) : (
+                  <button onClick={() => onApply(c.id)} className="mt-2 w-full rounded-lg border border-teal-500/60 px-2 py-1.5 text-xs font-semibold text-teal-300 hover:bg-teal-500/10">
+                    Candidati
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-slate-400">Nessuna panchina libera: tutti hanno un mister, persino i disperati.</p>
+        )}
+      </Card>
+      <Card title="Notizie dalle panchine">
+        {notices.length ? (
+          <ul className="space-y-1.5">
+            {notices.map((n, i) => (
+              <li key={i} className="text-xs text-slate-300">
+                <span className={'mr-1 font-bold ' + (n.kind === 'esonero' ? 'text-red-400' : n.kind === 'assunzione' ? 'text-teal-300' : n.kind === 'invito' ? 'text-flood-300' : 'text-slate-500')}>
+                  {n.kind === 'esonero' ? 'ESONERO' : n.kind === 'assunzione' ? 'ASSUNZIONE' : n.kind === 'invito' ? 'INVITO' : n.kind === 'rifiuto' ? 'RIFIUTO' : n.kind === 'ingaggio' ? 'INGAGGIO' : 'NEWS'}
+                </span>
+                {n.round ? <span className="text-slate-500">(G{n.round}) </span> : null}
+                {n.text}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-slate-400">Calma piatta: nessuna sedia ha traballato, per ora.</p>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const { career, clubs, players, fixtures, load, refresh } = useCareer()
   const [tab, setTab] = useState(() => {
@@ -176,10 +290,14 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
     if (!career) return null
     const clubById = Object.fromEntries(clubs.map((c) => [c.id, c]))
     const userClub = clubById[career.clubId]
-    const squad = players.filter((p) => p.clubId === userClub.id)
-    const userFixtures = fixtures
-      .filter((f) => f.homeId === userClub.id || f.awayId === userClub.id)
-      .sort((a, b) => a.number - b.number)
+    // Senza panchina (G5.1) niente rosa: il mister guarda il campionato
+    // dall'esterno, come tutti quei colleghi con la cartella in mano.
+    const squad = userClub ? players.filter((p) => p.clubId === userClub.id) : []
+    const userFixtures = userClub
+      ? fixtures
+          .filter((f) => f.homeId === userClub.id || f.awayId === userClub.id)
+          .sort((a, b) => a.number - b.number)
+      : []
     const playersByClub = {}
     for (const p of players) (playersByClub[p.clubId] = playersByClub[p.clubId] || []).push(p)
     const standingsByLeague = {}
@@ -197,6 +315,80 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   }
 
   const { clubById, userClub, squad, userFixtures, playersByClub, standingsByLeague } = data
+
+  // Senza panchina (G5.1): esonerato o rimasto a piedi, la carriera non
+  // si ferma. Il campionato gira, le offerte arrivano, le panchine libere
+  // aspettano — e a giugno qualcuno chiama sempre.
+  if (!userClub) {
+    const unplayed = fixtures.filter((f) => !f.played)
+    const nextNumber = unplayed.length ? Math.min(...unplayed.map((f) => f.number)) : null
+    const nextLabel = Number.isInteger(nextNumber) ? 'giornata ' + nextNumber : 'turno di Coppa'
+    return (
+      <main className="min-h-screen bg-pitch-950 pb-20 text-slate-100">
+        <header className="relative overflow-hidden border-b border-pitch-700/50">
+          <div className="pointer-events-none absolute -top-20 left-1/2 h-44 w-[28rem] -translate-x-1/2 rounded-full bg-flood-400/10 blur-3xl" />
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 p-4 sm:p-8">
+            <div>
+              <p className="scoreboard text-[10px] tracking-[0.35em] text-flood-400">Pitchtory · Build your own legacy</p>
+              <h1 className="scoreboard mt-1 text-2xl font-semibold">Senza panchina</h1>
+              <p className="text-xs text-slate-400">
+                Stagione {career.season} · {career.coachName}, mister in aspettativa
+              </p>
+            </div>
+          </div>
+        </header>
+        <section className="mx-auto max-w-5xl space-y-3 p-4 sm:p-8">
+          {career.sacked && (
+            <div className="rounded-xl border border-red-500/50 bg-red-500/10 p-4">
+              <h2 className="scoreboard text-xl font-bold text-red-300">ESONERO</h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Il {career.sacked.clubName} ti ha ringraziato alla giornata {career.sacked.round} della stagione {career.sacked.season}.
+                La scrivania è già stata svuotata: la carriera continua, altrove.
+              </p>
+            </div>
+          )}
+          <Card title="Il campionato va avanti">
+            {nextNumber !== null ? (
+              <div className="text-sm text-slate-300">
+                <p>Prossimo giro: <b>{nextLabel}</b>. Senza una squadra da allenare, le partite scorrono da sole.</p>
+                <button
+                  onClick={handleAdvanceRound}
+                  className="mt-3 w-full rounded-lg bg-teal-500 py-2 text-sm font-semibold text-pitch-950 shadow-[0_0_20px_rgba(47,181,110,0.25)] transition hover:bg-teal-400 hover:shadow-[0_0_28px_rgba(47,181,110,0.35)] active:scale-[0.98]"
+                >
+                  Avanza alla {nextLabel}
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-300">
+                <p>Stagione completata: 38 giornate su 38, e tu le hai viste tutte dalla tribuna.</p>
+                <button
+                  onClick={handleEndSeason}
+                  className="mt-3 w-full rounded-lg bg-teal-500 py-2 text-sm font-semibold text-pitch-950 shadow-[0_0_20px_rgba(47,181,110,0.25)] transition hover:bg-teal-400 hover:shadow-[0_0_28px_rgba(47,181,110,0.35)] active:scale-[0.98]"
+                >
+                  Concludi la stagione
+                </button>
+              </div>
+            )}
+          </Card>
+          <JobsPanel
+            career={career}
+            clubs={clubs}
+            clubById={clubById}
+            standingsByLeague={standingsByLeague}
+            userClub={null}
+            heat={null}
+            onApply={handleApplyJob}
+            onTake={handleTakeJob}
+            onDecline={handleDeclineOffer}
+          />
+          <p className="pt-2 text-center text-[10px] text-slate-500">
+            Pitchtory v{pkg.version} · seed: {career.seedText || career.seed} · tutto sul tuo dispositivo, sempre.
+          </p>
+        </section>
+      </main>
+    )
+  }
+
   const seniors = squad.filter((p) => !p.youth)
   const youth = squad.filter((p) => p.youth)
   const avgMorale = squad.length ? Math.round(squad.reduce((s, p) => s + p.morale, 0) / squad.length) : 0
@@ -215,6 +407,14 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const standings = standingsByLeague[standingsLeague || userLeagueId] || []
   const position = userStandings.findIndex((r) => r.clubId === userClub.id) + 1
   const stadiumInfo = expansionInfo(userClub)
+  // La sedia del mister (G5.1): posizione, forma e blasone dicono quanto
+  // scotta. Il tab Panchina raccoglie il resto — sedie libere comprese.
+  const last5 = userFixtures.filter((f) => f.played).slice(-5)
+  const form5 = {
+    wins: last5.filter((f) => (f.homeId === userClub.id ? f.homeGoals > f.awayGoals : f.awayGoals > f.homeGoals)).length,
+    losses: last5.filter((f) => (f.homeId === userClub.id ? f.homeGoals < f.awayGoals : f.awayGoals < f.homeGoals)).length,
+  }
+  const heat = seatHeat(userClub, position, form5)
 
   /** Solo i giocatori sani per la giornata indicata. */
   function fitPlayersFor(md) {
@@ -302,6 +502,68 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   async function handleSignSponsor(offerIndex) {
     try {
       await signSponsor(career.id, offerIndex)
+      await load(career.id)
+    } catch (err) {
+      window.alert(err.message)
+    }
+  }
+
+
+  /** Da senza panchina (G5.1): il campionato gira anche senza di te.
+   *  Stessa pipeline di handleMatchEnd, senza la tua partita: si simula,
+   *  si salva, si paga la giornata e la Coppa sorteggia il turno dopo. */
+  async function handleAdvanceRound() {
+    try {
+      const unplayed = fixtures.filter((f) => !f.played)
+      if (!unplayed.length) return
+      const number = Math.min(...unplayed.map((f) => f.number))
+      const toPlay = unplayed.filter((f) => f.number === number)
+      const results = toPlay.map((f) => {
+        const fit = fitPlayersFor(f.number)
+        const sim = simulateMatch(clubById[f.homeId], clubById[f.awayId], fit, matchSeed(career.seed, f.key + '#' + career.season))
+        const tie = sim.homeGoals === sim.awayGoals
+        const winnerId = f.type === 'cup'
+          ? tie
+            ? cupShootout(career, f, clubById[f.homeId], clubById[f.awayId], fit).winnerId
+            : sim.homeGoals > sim.awayGoals ? f.homeId : f.awayId
+          : null
+        return { f, sim, winnerId }
+      })
+      await saveFixtureResults(results.map((r) => ({ key: r.f.key, homeGoals: r.sim.homeGoals, awayGoals: r.sim.awayGoals, winnerId: r.winnerId })))
+      for (const r of results) await applyAiMatchday(r.f, r.sim.events, players)
+      await settleRound(career.id, number)
+      if (results.some((r) => r.f.type === 'cup')) await createNextCupRound(career.id)
+      await load(career.id)
+    } catch (err) {
+      window.alert('Errore nel girare la giornata: ' + err.message)
+    }
+  }
+
+  /** Candidatura (G5.1): il curriculum parte, la risposta arriva nel
+   *  feed delle notizie — e nel pulsante, se sorridono. */
+  async function handleApplyJob(clubId) {
+    try {
+      const res = await applyForJob(career.id, clubId)
+      if (res && res.ok === false && res.reason) window.alert(res.reason)
+      await load(career.id)
+    } catch (err) {
+      window.alert(err.message)
+    }
+  }
+
+  async function handleTakeJob(clubId, clubName) {
+    if (!window.confirm('Firmare per il ' + clubName + '? La panchina è tua, con tutto quello che porta con sé.')) return
+    try {
+      await takeJob(career.id, clubId)
+      await load(career.id)
+    } catch (err) {
+      window.alert(err.message)
+    }
+  }
+
+  async function handleDeclineOffer(clubId) {
+    try {
+      await declineOffer(career.id, clubId)
       await load(career.id)
     } catch (err) {
       window.alert(err.message)
@@ -634,6 +896,20 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
           </div>
         )}
 
+        {tab === 'jobs' && (
+          <JobsPanel
+            career={career}
+            clubs={clubs}
+            clubById={clubById}
+            standingsByLeague={standingsByLeague}
+            userClub={userClub}
+            heat={heat}
+            onApply={handleApplyJob}
+            onTake={handleTakeJob}
+            onDecline={handleDeclineOffer}
+          />
+        )}
+
         {tab === 'settings' && (
           <div className="max-w-xl animate-fade-up space-y-6">
             <div>
@@ -678,7 +954,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
       </section>
 
       <nav className="fixed inset-x-0 bottom-0 border-t border-pitch-700/60 bg-pitch-900/95 backdrop-blur">
-        <div className="mx-auto grid max-w-5xl grid-cols-7">
+        <div className="mx-auto grid max-w-5xl grid-cols-8">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -766,6 +1042,14 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                     <span className={seasonSummary.finance.endBalance < 0 ? 'text-red-400' : 'text-teal-300'}>{fmtMoney(seasonSummary.finance.endBalance)}</span>
                   </li>
                 </ul>
+              </div>
+            ) : null}
+            {seasonSummary.summerJob ? (
+              <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4">
+                <h3 className="scoreboard text-lg font-bold text-amber-300">La chiamata estiva</h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  Senza panchina a giugno, il {seasonSummary.summerJob} ha aperto lo studio e ha chiamato te: la prossima stagione si comincia da lì, con lo sponsor da rifirmare e una rosa da conoscere.
+                </p>
               </div>
             ) : null}
             {seasonSummary.deductions && seasonSummary.deductions.length ? (
