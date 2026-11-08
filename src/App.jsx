@@ -1,34 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import HomeScreen from './components/HomeScreen'
 import SetupScreen from './components/SetupScreen'
 import Dashboard from './components/Dashboard'
-import { listCareers } from './db'
 import PwaBanner from './components/PwaBanner'
 
 export default function App() {
+  const [view, setView] = useState('home')
   const [activeId, setActiveId] = useState(null)
-  const [showSetup, setShowSetup] = useState(false)
-  const [ready, setReady] = useState(false)
 
-  useEffect(() => {
-    listCareers()
-      .then((cs) => {
-        if (cs.length > 0) setActiveId(cs[0].id)
-        else setShowSetup(true)
-        setReady(true)
-      })
-      .catch(() => {
-        setShowSetup(true)
-        setReady(true)
-      })
-  }, [])
+  function startCareer(id) {
+    setActiveId(id)
+    setView('career')
+  }
 
-  if (!ready) return null
-
-  if (showSetup || !activeId) {
+  if (view === 'setup') {
     return (
       <>
         <PwaBanner />
-        <SetupScreen onStart={(id) => { setActiveId(id); setShowSetup(false) }} />
+        <SetupScreen onStart={startCareer} onBack={() => setView('home')} />
+      </>
+    )
+  }
+
+  if (view === 'career' && activeId) {
+    return (
+      <>
+        <PwaBanner />
+        <Dashboard
+          careerId={activeId}
+          onNewCareer={() => setView('setup')}
+          onSwitchCareer={(id) => { if (id) startCareer(id); else setView('home') }}
+        />
       </>
     )
   }
@@ -36,11 +38,7 @@ export default function App() {
   return (
     <>
       <PwaBanner />
-      <Dashboard
-        careerId={activeId}
-        onNewCareer={() => setShowSetup(true)}
-        onSwitchCareer={(id) => { setActiveId(id); setShowSetup(false) }}
-      />
+      <HomeScreen onStart={startCareer} onNewCareer={() => setView('setup')} />
     </>
   )
 }
