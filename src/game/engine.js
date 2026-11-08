@@ -1,4 +1,5 @@
 
+
 /**
  * Motore partita (F3). I gol seguono una distribuzione di Poisson guidata
  * dalla differenza di forza tra le squadre (miglior XI + morale + fattore casa).
@@ -23,6 +24,7 @@
  */
 import { Rng } from '../lib/rng'
 import { hasAbility } from './abilities'
+import { bestXIFor, bestFormationFor, teamStrengthFor, formationEdge, aiTactics, xgMultiplier, cardsMultiplier } from './tactics'
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
@@ -45,24 +47,16 @@ export function matchSeed(careerSeed, fixtureKey) {
   return new Rng(matchSeedNumber(careerSeed, fixtureKey))
 }
 
-/** Miglior XI (senior) per OVR. */
+/** Miglior XI (senior) per OVR. Sopravvive per i vecchi richiami: la
+ *  schierata vera passa da bestXIFor, modulo alla mano (G2). */
 export function bestXI(squad) {
   return squad.filter((p) => !p.youth).sort((a, b) => b.ovr - a.ovr).slice(0, 11)
 }
 
-/** Forza squadra: media OVR della miglior XI (senior) corretta dal morale. */
+/** Forza squadra (compat): quella del miglior modulo possibile per la
+ *  rosa. Da G2 la forza è dell'undici schierato, dazio di ruolo incluso. */
 export function teamStrength(club, squad) {
-  const seniors = bestXI(squad)
-  if (!seniors.length) return 40
-  const base = seniors.reduce((s, p) => s + p.ovr, 0) / seniors.length
-  const morale = seniors.reduce((s, p) => s + p.morale, 0) / seniors.length
-  // Abilità (F5): il Capitano tiene su la squadra, il Fuoriclasse la solleva.
-  let lead = 0
-  for (const p of seniors) {
-    if (hasAbility(p, 'capitano')) lead += 1
-    if (hasAbility(p, 'fuoriclasse')) lead += 1.5
-  }
-  return base * (0.92 + 0.08 * (morale / 100)) + lead
+  return teamStrengthFor(club, squad, bestFormationFor(club, squad))
 }
 
 /** Poisson (Knuth): gol attesi → gol segnati. */
@@ -128,16 +122,34 @@ function outcomeRng(seedNumber, momentId, choiceId) {
  * La cronaca base è identica a prescindere: i momenti chiave aggiungono
  * gol ed eventi sopra di essa.
  */
-export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoments = false, seedNumber = 0, userClubId = null } = {}) {
+export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoments = false, seedNumber = 0, userClubId = null, homeTactics = null, awayTactics = null } = {}) {
   const homeSquad = (playersByClubId[homeClub.id] || []).filter((p) => !p.youth)
   const awaySquad = (playersByClubId[awayClub.id] || []).filter((p) => !p.youth)
 
-  const sh = teamStrength(homeClub, homeSquad) + 2.5 // vantaggio campo
-  const sa = teamStrength(awayClub, awaySquad)
-  const xgH = clamp(1.3 + (sh - sa) * 0.05, 0.15, 4.5)
-  const xgA = clamp(1.05 + (sa - sh) * 0.05, 0.12, 4.5)
+  // G2 — Banco e Lavagnetta: chi non porta le tattiche se le scrive da
+  // solo (modulo che valorizza la rosa, stile stabile nel club, mente
+  // e cuore dal rapporto di forza). Matchup tra moduli e tattiche
+  // spostano i gol attesi: la lavagnetta conta, eccome.
+  const homeForm = (homeTactics && homeTactics.formation) || bestFormationFor(homeClub, homeSquad)
+  const awayForm = (awayTactics && awayTactics.formation) || bestFormationFor(awayClub, awaySquad)
+  const shBase = teamStrengthFor(homeClub, homeSquad, homeForm)
+  const saBase = teamStrengthFor(awayClub, awaySquad, awayForm)
+  const hT = homeTactics || aiTactics(homeClub, homeSquad, saBase, true)
+  const aT = awayTactics || aiTactics(awayClub, awaySquad, shBase, false)
+  const modsH = xgMultiplier(hT)
+  const modsA = xgMultiplier(aT)
+  const edge = formationEdge(hT.formation, aT.formation)
+  const sh = shBase + 2.5 // vantaggio campo
+  const sa = saBase
+  const xgH = clamp((1.3 + (sh - sa) * 0.05) * (1 + edge.edgeH) * modsH.own * modsA.opp, 0.12, 4.5)
+  const xgA = clamp((1.05 + (sa - sh) * 0.05) * (1 + edge.edgeA) * modsA.own * modsH.opp, 0.12, 4.5)
   const goalsH = Math.min(poisson(rng, xgH), 7)
   const goalsA = Math.min(poisson(rng, xgA), 7)
+
+  // Gli undici scesi in campo: da qui in poi marcatori, ammonizioni,
+  // infortuni e momenti chiave riguardano solo chi è davvero in campo.
+  const homeXI = bestXIFor(hT.formation, homeSquad)
+  const awayXI = bestXIFor(aT.formation, awaySquad)
 
   const events = []
 
@@ -153,13 +165,13 @@ export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoment
       text: 'GOL! ' + scorer.name + assistTxt + ' (' + club.name + ')',
     })
   }
-  for (let i = 0; i < goalsH; i++) addGoal('home', homeClub, homeSquad)
-  for (let i = 0; i < goalsA; i++) addGoal('away', awayClub, awaySquad)
+  for (let i = 0; i < goalsH; i++) addGoal('home', homeClub, homeXI)
+  for (let i = 0; i < goalsA; i++) addGoal('away', awayClub, awayXI)
 
   const missCount = rng.int(2, 5)
   for (let i = 0; i < missCount; i++) {
     const side = rng.chance(0.5) ? 'home' : 'away'
-    const squad = side === 'home' ? homeSquad : awaySquad
+    const squad = side === 'home' ? homeXI : awayXI
     const attacker = pickScorer(rng, squad)
     const variant = rng.int(0, 2)
     const text =
@@ -171,25 +183,31 @@ export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoment
     events.push({ minute: rng.int(2, 92), side, type: 'chance', playerId: attacker.id, text })
   }
 
-  const cardCount = rng.int(1, 5)
+  // Ammonizioni: chi preme aggressivo parla di più con l'arbitro.
+  const cardsH = cardsMultiplier(hT)
+  const cardsA = cardsMultiplier(aT)
+  const cardCount = Math.max(0, Math.round(rng.int(1, 5) * (cardsH + cardsA) / 2))
   for (let i = 0; i < cardCount; i++) {
-    const side = rng.chance(0.5) ? 'home' : 'away'
-    const squad = side === 'home' ? homeSquad : awaySquad
+    const side = rng.float() * (cardsH + cardsA) < cardsH ? 'home' : 'away'
+    const squad = side === 'home' ? homeXI : awayXI
+    if (!squad.length) continue
     const player = rng.pick(squad)
     events.push({ minute: rng.int(10, 92), side, type: 'card', playerId: player.id, text: player.name + ' ammonito' })
   }
   if (rng.chance(0.06)) {
     const side = rng.chance(0.5) ? 'home' : 'away'
-    const squad = side === 'home' ? homeSquad : awaySquad
-    const player = rng.pick(squad)
-    events.push({ minute: rng.int(25, 90), side, type: 'red', playerId: player.id, text: 'ESPULSO: ' + player.name + '!' })
+    const squad = side === 'home' ? homeXI : awayXI
+    if (squad.length) {
+      const player = rng.pick(squad)
+      events.push({ minute: rng.int(25, 90), side, type: 'red', playerId: player.id, text: 'ESPULSO: ' + player.name + '!' })
+    }
   }
 
   // Infortuni in partita: probabilità bassa per squadra, gravità variabile.
   // Tutto nel seed: stessa partita, stessi infortuni.
   for (const side of ['home', 'away']) {
     if (rng.chance(0.16)) {
-      const squad = side === 'home' ? homeSquad : awaySquad
+      const squad = side === 'home' ? homeXI : awayXI
       if (!squad.length) continue
       const player = rng.pick(squad)
       const weeks = rng.chance(0.7) ? rng.int(1, 2) : rng.int(3, 5)
@@ -209,8 +227,8 @@ export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoment
     const userIsHome = homeClub.id === userClubId
     const userClub = userIsHome ? homeClub : awayClub
     const oppClub = userIsHome ? awayClub : homeClub
-    const userSquad = userIsHome ? homeSquad : awaySquad
-    const oppSquad = userIsHome ? awaySquad : homeSquad
+    const userSquad = userIsHome ? homeXI : awayXI
+    const oppSquad = userIsHome ? awayXI : homeXI
     const userSide = userIsHome ? 'home' : 'away'
     // Risultato (solo cronaca base) della squadra utente al minuto indicato.
     const baseDiffAt = (min) =>
@@ -243,7 +261,7 @@ export function buildMatch(homeClub, awayClub, playersByClubId, rng, { keyMoment
   }
 
   events.sort((a, b) => a.minute - b.minute)
-  return { baseEvents: events, keyMoments: moments }
+  return { baseEvents: events, keyMoments: moments, homeTactics: hT, awayTactics: aT, homeXI, awayXI }
 }
 
 /** Simulazione completa senza interazione (partite AI e "salta al risultato"). */
