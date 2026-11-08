@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G3 — Cassa e Stadio (v0.18.0): incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G4 — Occhi sui Grandi.
+> Stato: G3 — Cassa e Stadio (v0.18.0): incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: G4 — Occhi sui Grandi.
 
 ## Sviluppo
 
@@ -77,6 +77,17 @@ Pitchtory è una PWA completa secondo lo standard Little Elsewhere:
 - **Social**: `og:image` 1200×630 con `og:image:alt`, `twitter:card summary_large_image`, JSON-LD `SoftwareApplication` (offers price 0, niente rating auto-attribuito). L'app è l'unica pagina del prodotto: indicizzata, senza cannibalizzazione.
 - **PNG a mano**: il push binario via API corrompe le immagini, quindi icone PNG (192/512 any + maskable, apple-touch 180) ed `og.png` si esportano da `logokit.html` e si caricano via web in `public/icons/` e `public/`; gli screenshot veri della app (1280×720 e 540×960) vanno in `public/screenshots/`.
 - **Lingua**: il gioco è pensato in italiano (lega fittizia, tono ironico): manifest e contenuti in IT, niente toggle EN.
+## La Home (H1)
+
+La PWA apre sulla home, sempre: lo stadio di notte prima del fischio d'inizio.
+Il crest sotto l'alone oro del riflettore, la carriera in corso a un tuffo —
+Continua con club, stagione e trofei al seguito — e tutto il resto a portata
+di pollice: nuova carriera, import da file, cambio carriera con la lista
+completa di quelle salvate, Aiuto & FAQ a schede (il gioco, i QTE, la
+Lavagnetta, il mercato e la cassa, la Piramide e le domande che tutti
+fanno) e le impostazioni — durata partita predefinita per le nuove carriere,
+gestione delle carriere e istruzioni per installare la PWA. Dalla carriera
+si torna alla home dalle Opzioni: la panchina è per tutti.
 ## La Piramide (G1)
 
 Due serie, una coppa, e le conseguenze che vengono con entrambe:
@@ -191,6 +202,7 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 - [x] F5 — Abilità Speciali e osservatori
 - [x] F5.5 — Restyle grafico: identità «Notte di Divisione d'Onore» + logo kit
 - [x] F6 — PWA completa (manifest, service worker con banner Aggiorna, _headers, installazione Android + iOS)
+- [x] H1 — La Home: crest d'ingresso, continua e cambia carriera, Aiuto & FAQ a schede, durata predefinita per le nuove carriere e gestione carriere
 
 Serie G — prima dell'app Android:
 
