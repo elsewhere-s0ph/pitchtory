@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G2 — Banco e Lavagnetta (v0.16.0): sei moduli con slot per ruolo e dazio di posizione, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo in corsa dal pannello cambi, AI con la sua lavagnetta — sopra La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G3 — Cassa e Stadio.
+> Stato: G2 — Banco e Lavagnetta (v0.16.1): sei moduli con slot per ruolo e dazio di posizione, undici titolare scelto slot per slot dalla Lavagnetta, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo in corsa dal pannello cambi, AI con la sua lavagnetta — sopra La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa. Prossima: G3 — Cassa e Stadio.
 
 ## Sviluppo
 
@@ -95,6 +95,15 @@ gioca fuori posizione (adiacente 88%, opposto 72%, portiere irrinunciabile). Il
 matchup è solo aritmetica: attacco contro difesa, e chi la spunta a centrocampo —
 un 5-3-2 toglie palla al 4-3-3, un 3-5-2 soffoca il 4-4-2.
 
+L'undici lo scrivi tu (v0.16.1): nella Lavagnetta ogni slot è tuo — tocchi un
+nome, scegli chi parte (chi è già titolare si scambia di posto) e l'anteprima ti
+mostra l'OVR efficace. Chi gioca fuori ruolo paga il dazio due volte: rende meno
+come squadra e pesa meno quando la partita sceglie i protagonisti — marcatori,
+assist, occasioni. Le scelte valgono finché il modulo non cambia: cambi formato
+e i titolari si riassettano da soli nello slot che gli va meglio. Chi manca
+all'appello (infortunio, squalifica, cessione) torna automatico: mai in dieci
+per colpa della lavagnetta.
+
 Tre assi di tattiche di squadra, salvati nella carriera e modificabili dal tab
 Lavagnetta (o in corsa, cambiando modulo dal pannello cambi):
 
@@ -141,7 +150,7 @@ React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (
 Serie G — prima dell'app Android:
 
 - [x] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
-- [x] G2 — Banco e Lavagnetta: sei moduli con slot per ruolo e dazio di posizione, matchup tra moduli, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo in corsa
+- [x] G2 — Banco e Lavagnetta: sei moduli con slot per ruolo e dazio di posizione, matchup tra moduli, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo in corsa, undici titolare scelto slot per slot
 - [ ] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, prestiti
 - [ ] G4 — Occhi sui Grandi: osservatori anche sui seniori avversari, attributi stimati finché non scoutati
 - [ ] G5 — Il Mercato degli Allenatori: club AI che licenziano per i risultati, candidature e offerte di lavoro, albo d'oro e storia della lega
