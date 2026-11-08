@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G3 — Cassa e Stadio (v0.18.0): incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: G4 — Occhi sui Grandi.
+> Stato: G5.1 — Panchine a rischio (v0.20.0): esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: G4 — Occhi sui Grandi.
 
 ## Sviluppo
 
@@ -157,7 +157,7 @@ Coppa; la manutenzione si paga a posto, a ogni partita in casa.
 - **Ampliamento dello stadio**: a scaglioni da 4.000 posti, costo crescente a
   ogni lavoro (4M + 2M a scaglione in massima, 1M + 0,5M in cadetta). Quanti
   lavori regge la struttura lo dice il livello dello stadio nelle strutture.
-- **Prestiti seppi**: nel mercato a finestra aperta puoi chiedere un prestito
+- **Prestiti secchi**: nel mercato a finestra aperta puoi chiedere un prestito
   secco — fino a fine stagione, poi il giocatore torna a casa. Il proprietario
   accetta solo se ha avanzo in quel ruolo, se il giocatore non è tra i suoi
   due migliori nel ruolo e se il seed gli dice sì (80%). Costo: il 10% del
@@ -173,6 +173,17 @@ Le carriere in corso sopravvivono: il registro della cassa arriva con la
 migrazione al primo caricamento, i conti partono dalla stagione in corso e
 la prima trattativa sponsor apre al primo giro. Senza firma, la Federazione
 non fa scendere in campo nessuno: prima il nome sul petto, poi il calcio.
+
+## Panchine a rischio (G5.1)
+
+Il calcio insegna che la sedia scotta per tutti — anche per il mister.
+
+- **Esoneri in corsa**: dalla giornata 10 i club AI guardano classifica e forma, e chi sta almeno 3 posizioni sotto l'attesa del proprio blasone rischia il telefono che squilla. Le panchine libere si riempiono da sole dopo un paio di giornate: un nuovo mister dal seed, come sempre.
+- **Anche la tua**: dalla giornata 12, se sei 14° o peggio e almeno 3 posizioni sotto al blasone, l'esonero diventa possibile. La dirigenza ringrazia e la carriera continua senza panchina: il campionato gira da solo (bottone Avanza), le offerte arrivano, le panchine libere accettano candidature. E a fine stagione, se nessuno ti ha chiamato, chiama un disperato: lavoro estivo garantito.
+- **Il mercato delle panchine**: tab Panchina — lo stato della tua sedia (poltrona comoda, sedia che scotta, brace viva, fuoco addosso), le offerte sul tavolo da accettare o rifiutare, le panchine libere con Candidati (esito dal seed: blasone, trofei e un pizzico di fortuna; una risposta sola a stagione) e le notizie della lavagna: esoneri, assunzioni, inviti.
+- **Cambio club in corsa**: firmi la nuova panchina e il vecchio club assume subito un nome nuovo. Lo sponsor si rinegozia col club che arriva: firma chi ti sorride, prima di scendere in campo.
+
+Le carriere in corso sopravvivono: la migrazione dà un mister dal seed a ogni club AI, niente nuova carriera richiesta.
 
 ## Stack
 
@@ -208,9 +219,10 @@ Serie G — prima dell'app Android:
 
 - [x] G1 — La Piramide: serie cadetta, scelta del club tra le due leghe, promozioni e retrocessioni a fine stagione, Coppa Nazionale Trofeo Bellandi tra le due leghe, squalifiche (rossa = 1 giornata, 5 ammonizioni = stop)
 - [x] G2 — Banco e Lavagnetta: sei moduli con slot per ruolo e dazio di posizione, matchup tra moduli, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo e mentalità in corsa, pannello cambi automatico sull'infortunio, undici titolare scelto slot per slot
-- [x] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, stadio ampliabile a scaglioni, prestiti seppi, penalità federali per il rosso
+- [x] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, stadio ampliabile a scaglioni, prestiti secchi, penalità federali per il rosso
 - [ ] G4 — Occhi sui Grandi: osservatori anche sui seniori avversari, attributi stimati finché non scoutati
-- [ ] G5 — Il Mercato degli Allenatori: club AI che licenziano per i risultati, candidature e offerte di lavoro, albo d'oro e storia della lega
+- [ ] G5 — Il Mercato degli Allenatori: albo d'oro e storia della lega
+- [x] G5.1 — Panchine a rischio: esoneri durante la stagione (club AI e mister), tab Panchina con offerte, candidature e panchine libere, cambio club a stagione in corso, lavoro estivo
 - [ ] F7 — Capacitor (app vera)
 - Post-rilascio: nazione estera, Nazionali
 

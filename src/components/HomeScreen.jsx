@@ -42,7 +42,7 @@ const HELP_TABS = [
     label: 'Mercato & cassa',
     body: [
       "Il mercato apre due volte l'anno: estate e infrasettimana d'inverno. Ogni club ha il suo prezzo e ogni offerta una risposta: sotto l'ottanta per cento del richiesto, nemmeno alzano la cornetta.",
-      "I prestiti sono seppi: chiedi, paghi una fee, e a fine stagione il giocatore torna a casa sua. La roba degli altri non si vende.",
+      "I prestiti sono secchi: chiedi, paghi una fee, e a fine stagione il giocatore torna a casa sua. La roba degli altri non si vende.",
       "La cassa respira a ogni giornata: biglietti a chi ospita, sponsor e stipendi a tutti. Gli stipendi sono a stagione, in trentotto rate; lo sponsor si firma a inizio stagione — base alla firma, bonus solo se l'obiettivo arriva.",
     ],
   },
@@ -62,7 +62,7 @@ const HELP_TABS = [
       { q: 'Posso giocare offline?', a: 'Sì: installata la PWA (banner Aggiorna e Installa, su iPhone e iPad Condividi → Aggiungi a Home), il gioco parte anche senza rete.' },
       { q: 'Dove finiscono i miei dati?', a: 'Nel database del tuo browser (IndexedDB). Nessun cloud, nessun account: fate amicizia.' },
       { q: 'E se pulisco la cache?', a: 'Le carriere se ne vanno con lei. Esportale da Opzioni prima dei lavori: il file JSON si riporta su qualsiasi dispositivo.' },
-      { q: 'Posso cambiare club a metà carriera?', a: 'No. Il calcio insegna che si cambia club solo quando ti licenziano — e i licenziamenti sono un’altra tappa della roadmap.' },
+      { q: 'Posso cambiare club a metà carriera?', a: 'Sì: le panchine scottano in corsa. Un club che esonera il suo mister può chiamarti — e dal tab Panchina puoi candidarti tu alle panchine libere. Occhio però: anche la tua sedia può traballare, se i risultati non arrivano.' },
       { q: 'Possono esistere due mondi uguali?', a: 'Sì, con lo stesso seed. Il seed è il tuo angolo di universo: custodiscilo.' },
       { q: 'Perché la versione cambia?', a: 'Ogni tappa della roadmap diventa una build. In Opzioni leggi la versione: è il modo più rapido di sapere che cosa sta girando.' },
     ],
