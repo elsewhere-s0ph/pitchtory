@@ -1,6 +1,7 @@
 
 
 
+
 import Dexie from 'dexie'
 import { generateUniverse, playerValue, LEAGUES } from './game/universe'
 import { generateSchedule } from './game/schedule'
@@ -241,7 +242,7 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
 export async function loadCareer(id) {
   const career = await db.careers.get(id)
   if (career && career.universeVersion !== UNIVERSE_VERSION) {
-    throw new Error('Carriera nata con l'universo di prima (Coppa a 32 dopo la 38ª): creane una nuova.')
+    throw new Error('Carriera nata con un universo precedente (Coppa a 32 dopo la 38ª): creane una nuova.')
   }
   const [clubs, players, fixtures] = await Promise.all([
     db.clubs.where('careerId').equals(id).toArray(),
