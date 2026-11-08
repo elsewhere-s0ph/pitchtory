@@ -4,7 +4,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
-import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
+import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
+import { expansionInfo, sponsorPerRound } from '../game/finance'
 import { scoutedPotential, scoutError } from '../game/scouting'
 import { computeStandings } from '../game/standings'
 import { LEAGUES } from '../game/universe'
@@ -213,6 +214,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const userStandings = standingsByLeague[userLeagueId] || []
   const standings = standingsByLeague[standingsLeague || userLeagueId] || []
   const position = userStandings.findIndex((r) => r.clubId === userClub.id) + 1
+  const stadiumInfo = expansionInfo(userClub)
 
   /** Solo i giocatori sani per la giornata indicata. */
   function fitPlayersFor(md) {
@@ -265,6 +267,9 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
       ])
       await applyPostMatch(career.id, fixture, finalResult, userClub.id, squad, players)
       for (const r of simResults) await applyAiMatchday(r.f, r.sim.events, players)
+      // La giornata paga (G3): biglietti a chi ospita, sponsor e stipendi
+      // a tutti. La cassa fa il suo mestiere.
+      await settleRound(career.id, fixture.number)
       // Coppa: turno chiuso, si sorteggiano le coppie successive.
       if (isCup) await createNextCupRound(career.id)
       setMatchFixture(null)
@@ -282,6 +287,15 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
       setSeasonSummary(summary)
     } catch (err) {
       window.alert('Errore nel chiudere la stagione: ' + err.message)
+    }
+  }
+
+  async function handleExpandStadium() {
+    try {
+      await expandStadium(career.id)
+      await load(career.id)
+    } catch (err) {
+      window.alert(err.message)
     }
   }
 
@@ -383,7 +397,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                   <li>Morale rosa: <b>{avgMorale}</b></li>
                   <li>Infortunati: <b className={injuredCount ? 'text-red-400' : ''}>{injuredCount}</b></li>
                   <li>Squalificati: <b className={bannedCount ? 'text-red-400' : ''}>{bannedCount}</b></li>
-                  <li>Budget: <b>{fmtMoney(userClub.budget)}</b></li>
+                  <li>Cassa: <b className={userClub.budget < 0 ? 'text-red-400' : ''}>{fmtMoney(userClub.budget)}</b></li>
                   <li>Stipendi: <b>{fmtMoney(wageBill)}</b></li>
                 </ul>
               </Card>
@@ -459,18 +473,47 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
 
         {tab === 'club' && (
           <div className="grid animate-fade-up gap-3 sm:grid-cols-2">
-            <Card title="Finanze e strutture">
+            <Card title="Cassa e Stadio">
               <ul className="mb-3 space-y-1 text-sm text-slate-300">
-                <li>Budget trasferimenti: <b>{fmtMoney(userClub.budget)}</b></li>
-                <li>Stipendi rosa: <b>{fmtMoney(wageBill)}</b></li>
+                <li>Cassa: <b className={userClub.budget < 0 ? 'text-red-400' : ''}>{fmtMoney(userClub.budget)}</b></li>
+                <li>Stipendi rosa: <b>{fmtMoney(wageBill)}</b> a stagione</li>
+                <li>Sponsor: <b>{fmtMoney(sponsorPerRound(userClub) * 38)}</b> a stagione</li>
                 <li>Stadio: <b>{userClub.stadium.name}</b> ({userClub.stadium.capacity.toLocaleString('it-IT')} posti)</li>
               </ul>
+              {stadiumInfo.canDo ? (
+                <button
+                  onClick={handleExpandStadium}
+                  disabled={userClub.budget < stadiumInfo.cost}
+                  className="mb-3 w-full rounded-lg bg-teal-500 px-3 py-2 text-xs font-semibold text-pitch-950 hover:bg-teal-400 disabled:opacity-40"
+                >
+                  Amplia lo stadio · +{stadiumInfo.seats.toLocaleString('it-IT')} posti · {fmtMoney(stadiumInfo.cost)}
+                </button>
+              ) : (
+                <p className="mb-3 text-xs text-slate-400">
+                  La struttura non regge altri lavori: {stadiumInfo.done} ampliamenti su {stadiumInfo.max} possibili.
+                </p>
+              )}
               <div className="space-y-1.5">
                 <LevelBar label="Stadio" level={userClub.facilities.stadiumLevel} />
                 <LevelBar label="Settore giovanile" level={userClub.facilities.youthLevel} />
                 <LevelBar label="Staff" level={userClub.facilities.staffLevel} />
               </div>
+              <p className="mt-2 text-[10px] text-slate-500">
+                Ogni partita in casa incassa biglietti secondo capienza, posizione e forma; ogni giornata paga gli stipendi e incassa lo sponsor.
+              </p>
             </Card>
+            {(career.finance && career.finance.mails && career.finance.mails.length) ? (
+              <Card title="Posta della Federazione">
+                <ul className="space-y-3">
+                  {career.finance.mails.map((m, i) => (
+                    <li key={i} className="rounded-lg border border-red-400/30 bg-red-400/5 p-3">
+                      <p className="text-xs font-bold text-red-300">{m.title}</p>
+                      <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-slate-300">{m.body}</p>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
             <Card title="Osservatori">
               <LevelBar label="Rete di osservatori" level={scouts.level} />
               <p className="mt-2 text-xs text-slate-400">
@@ -637,6 +680,37 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                 <h3 className="mb-2 text-sm font-semibold text-flood-400">La Piramide si muove</h3>
                 <p className="text-sm text-teal-300">Promossi: {(seasonSummary.promoted || []).join(' · ')}</p>
                 <p className="mt-1 text-sm text-red-300">Retrocessi: {(seasonSummary.relegated || []).join(' · ')}</p>
+              </div>
+            ) : null}
+            {seasonSummary.finance ? (
+              <div className="rounded-xl border border-slate-800 bg-pitch-900/40 p-4">
+                <h3 className="mb-2 text-sm font-semibold text-flood-400">I conti della stagione</h3>
+                <ul className="space-y-1 text-sm">
+                  <li className="flex justify-between"><span>Biglietti incassati</span><span className="text-teal-300">{fmtMoney(seasonSummary.finance.tickets)}</span></li>
+                  <li className="flex justify-between"><span>Sponsor</span><span className="text-teal-300">{fmtMoney(seasonSummary.finance.sponsor)}</span></li>
+                  <li className="flex justify-between"><span>Manutenzione stadio</span><span className="text-red-300">-{fmtMoney(seasonSummary.finance.upkeep)}</span></li>
+                  <li className="flex justify-between"><span>Stipendi</span><span className="text-red-300">-{fmtMoney(seasonSummary.finance.wages)}</span></li>
+                  {seasonSummary.finance.expansions ? (
+                    <li className="flex justify-between"><span>Ampliamenti stadio</span><span className="text-red-300">-{fmtMoney(seasonSummary.finance.expansions)}</span></li>
+                  ) : null}
+                  <li className="mt-1 flex justify-between border-t border-slate-800 pt-1 font-semibold">
+                    <span>Cassa a fine stagione</span>
+                    <span className={seasonSummary.finance.endBalance < 0 ? 'text-red-400' : 'text-teal-300'}>{fmtMoney(seasonSummary.finance.endBalance)}</span>
+                  </li>
+                </ul>
+              </div>
+            ) : null}
+            {seasonSummary.deductions && seasonSummary.deductions.length ? (
+              <div className="rounded-xl border border-red-500/50 bg-red-500/10 p-4">
+                <h3 className="mb-2 text-sm font-semibold text-red-400">Penalità della Federazione</h3>
+                <ul className="space-y-1 text-sm text-red-200">
+                  {seasonSummary.deductions.map((d, i) => (
+                    <li key={i} className="flex justify-between gap-2">
+                      <span className="min-w-0 flex-1 truncate">{d.name}</span>
+                      <span className="tabular-nums">-{d.points} punti ({fmtMoney(d.balance)} di cassa)</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             <div className="rounded-xl border border-slate-800 bg-pitch-900/40 p-4">
