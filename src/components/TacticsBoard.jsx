@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { setTactics } from '../db'
-import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, bestXIFor, bestFormationFor } from '../game/tactics'
+import { setTactics, setLineup } from '../db'
+import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, lineupXI, remapPicks, bestFormationFor } from '../game/tactics'
 
 const SLOT_LABELS = { GK: 'Portiere', DF: 'Difesa', MF: 'Centrocampo', FW: 'Attacco' }
 const MENTALITIES = [
@@ -40,17 +40,74 @@ function PillGroup({ title, options, value, onPick }) {
   )
 }
 
-/** La Lavagnetta (G2): modulo con slot, tattiche di squadra e l'undici
- *  che ne uscirebbe — dazio di ruolo incluso, suggerimento a fondo pagina. */
+/** La Lavagnetta (G2): modulo, tattiche di squadra e l'undici — che da
+ *  G2.1 si sceglie slot per slot, dazio di ruolo incluso. */
 export default function TacticsBoard({ career, squad, round, onDone }) {
   const saved = useMemo(() => ({ ...DEFAULT_TACTICS, ...(career.tactics || {}) }), [career])
-  const [draft, setDraft] = useState(saved)
   const seniors = useMemo(() => squad.filter((p) => !p.youth), [squad])
-  const xi = useMemo(() => bestXIFor(draft.formation, seniors), [draft.formation, seniors])
-  const suggest = useMemo(() => bestFormationFor(null, seniors), [seniors])
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved)
+  // Chi può davvero scendere in campo questa giornata.
+  const fit = useMemo(
+    () =>
+      seniors.filter(
+        (p) => !(p.injuredUntil && round <= p.injuredUntil) && !(p.bannedUntil && round <= p.bannedUntil),
+      ),
+    [seniors, round],
+  )
+  const savedPicks = useMemo(
+    () =>
+      career.lineup && career.lineup.formation === saved.formation && Array.isArray(career.lineup.picks)
+        ? career.lineup.picks
+        : null,
+    [career, saved],
+  )
+  const [draft, setDraft] = useState(saved)
+  const [picks, setPicks] = useState(() => {
+    const n = (FORMATIONS[saved.formation] || FORMATIONS['442']).slots.length
+    return savedPicks ? savedPicks.slice() : new Array(n).fill(null)
+  })
+  const [pickSlot, setPickSlot] = useState(null)
+  const slots = FORMATIONS[draft.formation].slots
+  const xi = useMemo(() => lineupXI(draft.formation, fit, picks), [draft.formation, fit, picks])
+  // Il k-esimo giocatore di un reparto nello schieramento corrisponde al
+  // k-esimo slot di quel reparto nel modulo (entrambi in ordine).
+  const xiBySlotIndex = useMemo(() => {
+    const m = {}
+    const seen = { GK: 0, DF: 0, MF: 0, FW: 0 }
+    for (const p of xi) {
+      m[p.slot + ':' + seen[p.slot]] = p
+      seen[p.slot] += 1
+    }
+    return m
+  }, [xi])
+  const suggest = useMemo(() => bestFormationFor(null, fit), [fit])
+  const hasPicks = picks.some((id) => id != null)
+  const dirty =
+    JSON.stringify(draft) !== JSON.stringify(saved) ||
+    JSON.stringify(picks) !== JSON.stringify(savedPicks || new Array(slots.length).fill(null))
 
-  const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }))
+  const set = (k, v) => {
+    if (k === 'formation' && v !== draft.formation) {
+      setPicks((old) => remapPicks(v, fit, old))
+      setPickSlot(null)
+    }
+    setDraft((d) => ({ ...d, [k]: v }))
+  }
+
+  const chooseFor = (i, playerId) => {
+    setPicks((old) => {
+      const next = old.slice()
+      if (playerId == null) {
+        next[i] = null
+        return next
+      }
+      const at = next.indexOf(playerId)
+      if (at >= 0) next[at] = next[i]
+      next[i] = playerId
+      return next
+    })
+    setPickSlot(null)
+  }
+
   const repartoAvg = (slot) => {
     const list = xi.filter((p) => p.slot === slot)
     if (!list.length) return 0
@@ -59,6 +116,7 @@ export default function TacticsBoard({ career, squad, round, onDone }) {
 
   async function save() {
     await setTactics(career.id, draft)
+    await setLineup(career.id, hasPicks ? { formation: draft.formation, picks } : null)
     onDone()
   }
 
@@ -84,31 +142,94 @@ export default function TacticsBoard({ career, squad, round, onDone }) {
       </div>
 
       <div className="rounded-xl border border-pitch-700/60 bg-pitch-900/50 p-4">
-        <h3 className="scoreboard mb-3 text-xs font-semibold text-slate-400">L'undici che scenderebbe in campo</h3>
+        <h3 className="scoreboard mb-2 text-xs font-semibold text-slate-400">L'undici che scende in campo</h3>
+        <p className="mb-3 text-[11px] text-slate-500">
+          Tocca un nome per decidere chi va in quello slot. Fuori ruolo = dazio: rende meno come squadra e pesa meno quando la partita sceglie i protagonisti.
+        </p>
         {['FW', 'MF', 'DF', 'GK'].map((r) => (
           <div key={r} className="mb-3 last:mb-0">
             <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">{SLOT_LABELS[r]}</p>
             <div className="flex flex-wrap gap-1.5">
-              {xi.filter((p) => p.slot === r).map((p) => {
-                const out = affinity(p.role, p.slot) < 1
-                const injured = p.injuredUntil && round <= p.injuredUntil
-                const banned = p.bannedUntil && round <= p.bannedUntil
+              {slots.map((s, i) => ({ s, i })).filter((x) => x.s === r).map((x) => {
+                const seen = slots.slice(0, x.i).filter((s) => s === r).length
+                const p = xiBySlotIndex[r + ':' + seen]
+                if (!p) return null
+                const aff = affinity(p.role, p.slot)
+                const out = aff < 1
+                const chosen = picks[x.i] === p.id
                 return (
-                  <span
-                    key={p.id}
-                    className={'rounded-lg border px-2 py-1 text-xs ' + (out ? 'border-amber-500/50 bg-amber-500/5 text-amber-200' : 'border-slate-700 bg-pitch-900 text-slate-200')}
-                    title={out ? 'Fuori ruolo: rende meno' : 'Ruolo naturale'}
+                  <button
+                    key={p.id + '-' + x.i}
+                    onClick={() => setPickSlot(pickSlot === x.i ? null : x.i)}
+                    className={
+                      'rounded-lg border px-2 py-1 text-xs transition ' +
+                      (pickSlot === x.i
+                        ? 'border-teal-400 bg-teal-400/10 text-teal-200'
+                        : out
+                          ? 'border-amber-500/50 bg-amber-500/5 text-amber-200 hover:border-amber-400'
+                          : 'border-slate-700 bg-pitch-900 text-slate-200 hover:border-teal-500/60')
+                    }
+                    title={out ? 'Fuori ruolo: OVR efficace ' + Math.round(p.ovr * aff) + ' su ' + p.ovr : chosen ? 'Scelto da te: tocca per cambiare' : 'Scelta dello staff: tocca per cambiare'}
                   >
-                    {p.name} · {p.ovr}
-                    {out ? ' · fuori ruolo' : ''}
-                    {injured ? ' · infortunato' : ''}
-                    {banned ? ' · squalificato' : ''}
-                  </span>
+                    {p.name} · {out ? Math.round(p.ovr * aff) + ' su ' + p.ovr + ' · fuori ruolo' : p.ovr}
+                    {chosen ? ' ✓' : ''}
+                  </button>
                 )
               })}
             </div>
           </div>
         ))}
+
+        {pickSlot !== null && (
+          <div className="mt-2 rounded-lg border border-teal-500/40 bg-pitch-950/60 p-3">
+            <p className="text-xs font-semibold text-teal-300">
+              Slot {SLOT_LABELS[slots[pickSlot]]}: chi mandi in campo?
+            </p>
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              <button
+                onClick={() => chooseFor(pickSlot, null)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-left text-xs text-slate-300 transition hover:border-teal-500"
+              >
+                Lascia scegliere allo staff
+              </button>
+              {fit
+                .slice()
+                .sort(
+                  (a, b) =>
+                    b.ovr * affinity(b.role, slots[pickSlot]) - a.ovr * affinity(a.role, slots[pickSlot]) ||
+                    (a.id < b.id ? -1 : 1),
+                )
+                .map((p) => {
+                  const aff = affinity(p.role, slots[pickSlot])
+                  const out = aff < 1
+                  const elsewhere = picks.indexOf(p.id) >= 0 && picks[pickSlot] !== p.id
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => chooseFor(pickSlot, p.id)}
+                      className={
+                        'rounded-lg border px-3 py-1.5 text-left text-xs transition ' +
+                        (picks[pickSlot] === p.id
+                          ? 'border-teal-400 bg-teal-400/10 text-teal-200'
+                          : 'border-slate-700 text-slate-300 hover:border-teal-500')
+                      }
+                    >
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="min-w-0 flex-1 truncate">
+                          {p.name} · {p.role}
+                        </span>
+                        <span className={'shrink-0 tabular-nums ' + (out ? 'text-amber-300' : 'text-slate-400')}>
+                          {p.ovr}{out ? ' → ' + Math.round(p.ovr * aff) : ''}
+                        </span>
+                      </span>
+                      {elsewhere && <span className="block text-[10px] text-slate-500">Già titolare altrove: si scambiano di slot</span>}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+        )}
+
         <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-slate-800 bg-pitch-950/40 p-3 text-center">
           <div>
             <p className="text-[10px] uppercase tracking-widest text-slate-500">Attacco</p>
@@ -123,6 +244,9 @@ export default function TacticsBoard({ career, squad, round, onDone }) {
             <p className="text-lg font-bold text-flood-300">{repartoAvg('DF')}</p>
           </div>
         </div>
+        <p className="mt-2 text-[10px] text-slate-500">
+          L'undici salvato vale per ogni partita finché il modulo non cambia; chi manca all'appello (infortunio, squalifica, cessione) torna automatico.
+        </p>
       </div>
 
       <div className="space-y-4 rounded-xl border border-pitch-700/60 bg-pitch-900/50 p-4">
@@ -139,7 +263,7 @@ export default function TacticsBoard({ career, squad, round, onDone }) {
         {dirty ? 'Salva la lavagnetta' : 'La lavagnetta è già legge'}
       </button>
       <p className="text-center text-[10px] text-slate-500">
-        Mentalità, pressing e linea spostano i gol attesi; il modulo decide i matchup. Tutto nel seed, niente dadi truccati.
+        Mentalità, pressing e linea spostano i gol attesi; il modulo decide i matchup; l'undici lo scrivi tu, slot per slot. Tutto nel seed, niente dadi truccati.
       </p>
     </div>
   )

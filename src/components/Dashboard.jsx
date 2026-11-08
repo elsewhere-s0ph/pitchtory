@@ -570,17 +570,17 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
       </section>
 
       <nav className="fixed inset-x-0 bottom-0 border-t border-pitch-700/60 bg-pitch-900/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl">
+        <div className="mx-auto grid max-w-5xl grid-cols-7">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={'scoreboard relative flex-1 py-3 text-[11px] font-semibold transition ' + (tab === t.id ? 'text-flood-400' : 'text-slate-500 hover:text-slate-300')}
+              className={'scoreboard relative min-w-0 py-3 text-center text-[11px] font-semibold transition ' + (tab === t.id ? 'text-flood-400' : 'text-slate-500 hover:text-slate-300')}
             >
               {tab === t.id && (
                 <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-flood-400/90" />
               )}
-              {t.label}
+              <span className="block truncate px-1">{t.label}</span>
             </button>
           ))}
         </div>
