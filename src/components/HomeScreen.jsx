@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listCareers, deleteCareer, importCareer, db } from '../db'
+import { listCareers, deleteCareer, importCareer, db, userTrophies } from '../db'
 import crest from '../assets/crest.svg'
 import pkg from '../../package.json'
 
@@ -18,6 +18,7 @@ const HELP_TABS = [
       "Pitchtory è un football manager da tasca: una lega fittizia, due serie, una coppa e trentotto giornate da cardiologo. Nessun account, nessun server: la carriera vive sul tuo dispositivo e non chiede il permesso a nessuno.",
       "Ogni carriera nasce da un seed: stesso seed, stesso universo, stesso futuro. Condividilo e chi vuoi giocherà il tuo stesso mondo — le discussioni su chi lo interpreta meglio restano affare vostro.",
       "Si vince facendo punti e alzando trofei. Si sopravvive facendo quadrare i conti. Il resto è cronaca.",
+      "L'albo d'oro nel tab Club racconta la lega: il passato scritto dal seed e le stagioni giocate da te — campioni, Coppe e capocannonieri. La tua vetrina, invece, conta solo i trofei tuoi.",
     ],
   },
   {
@@ -66,6 +67,7 @@ const HELP_TABS = [
       { q: 'Posso cambiare club a metà carriera?', a: 'Sì: le panchine scottano in corsa. Un club che esonera il suo mister può chiamarti — e dal tab Panchina puoi candidarti tu alle panchine libere. Occhio però: anche la tua sedia può traballare, se i risultati non arrivano.' },
       { q: 'Perché alcuni OVR hanno la tilde?', a: 'Perché sono letture a occhio della rete: i seniori avversari si mostrano stimati e con le abilità coperte. Un report da 100k dice la verità su un uomo — OVR, attributi, abilità — e non si scorda per tutta la carriera.' },
       { q: 'Possono esistere due mondi uguali?', a: 'Sì, con lo stesso seed. Il seed è il tuo angolo di universo: custodiscilo.' },
+      { q: "Da dove viene l'albo d'oro?", a: "La lega aveva un passato prima di te: lo ha scritto il seed, come tutto il resto. Stesso seed, stessa storia — e ogni giugno le stagioni vere finiscono nell'albo del tab Club, campioni e capocannonieri compresi." },
       { q: 'Perché la versione cambia?', a: 'Ogni tappa della roadmap diventa una build. In Opzioni leggi la versione: è il modo più rapido di sapere che cosa sta girando.' },
     ],
   },
@@ -170,7 +172,10 @@ export default function HomeScreen({ onStart, onNewCareer }) {
 
   const last = careers[0]
   const activeHelp = HELP_TABS.find((t) => t.id === helpTab) || HELP_TABS[0]
-  const trophiesLabel = (c) => (Array.isArray(c.trophies) && c.trophies.length ? ' · ' + c.trophies.length + (c.trophies.length === 1 ? ' trofeo' : ' trofei') : '')
+  const trophiesLabel = (c) => {
+    const n = userTrophies(c).length
+    return n ? ' · ' + n + (n === 1 ? ' trofeo' : ' trofei') : ''
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-pitch-950 text-slate-100">
