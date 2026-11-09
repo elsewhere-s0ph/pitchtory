@@ -17,6 +17,7 @@ import { DEFAULT_TACTICS } from './game/tactics'
 import { matchdayGate, wagesPerRound, expansionInfo, penaltyPoints, federationMail, makeSponsorOffers, bestSponsorOffer, sponsorBonus } from './game/finance'
 import { managerNameFor, sackProb, offerChance, applyProb } from './game/jobs'
 import { SCOUT_REPORT_COST } from './game/scouting'
+import { generateAlbo, alboAfterSeason, seasonTopScorer } from './game/history'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -221,6 +222,8 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     scouts: { level: 1, focus: null },
     scouted: [],
     trophies: [],
+    albo: generateAlbo(seed, universe.clubs),
+    history: [],
     createdAt: new Date().toISOString(),
   })
 
@@ -260,6 +263,17 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
   })
 
   return careerId
+}
+
+/** I trofei del mister (G5): la bacheca della lega raccoglie tutto,
+ *  ma la vetrina sua conta solo quello che ha vinto lui. Le voci
+ *  vecchie non hanno il timbro: si guardano per club, e pazienza
+ *  per i titoli vinti con una maglia che nel frattempo è cambiata. */
+export function userTrophies(career) {
+  const clubId = career && career.clubId
+  return ((career && career.trophies) || []).filter((t) =>
+    t && (t.user === undefined ? !!clubId && t.championId === clubId : t.user),
+  )
 }
 
 /**
@@ -364,6 +378,35 @@ export async function loadCareer(id) {
   if (!career.scouted) {
     career.scouted = []
     await db.careers.update(id, { scouted: career.scouted })
+  }
+  // Migrazione lazy (G5): l'albo d'oro esiste già — la lega aveva un
+  // passato prima del mister, scritto dal seed. Stesso seed, stessa
+  // storia: chi ce l'ha già non si tocca.
+  if (!career.albo) {
+    career.albo = generateAlbo(career.seed, clubs)
+    await db.careers.update(id, { albo: career.albo })
+  }
+  // Migrazione lazy (G5): la storia delle stagioni giocate. Le
+  // carriere nate prima di G5 la ricostruiscono dai trofei già
+  // registrati: campioni e Coppe si salvano, i capocannonieri no.
+  if (!Array.isArray(career.history)) {
+    const nameToId = {}
+    for (const l of LEAGUES) nameToId[l.name] = l.id
+    career.history = (career.trophies || []).reduce((acc, t) => {
+      if (!t || !t.championId) return acc
+      let entry = acc.find((x) => x.season === t.season)
+      if (!entry) {
+        entry = { season: t.season, champions: [], cup: null, scorers: [], user: null }
+        acc.push(entry)
+      }
+      if (t.competition === CUP_NAME) {
+        entry.cup = { clubId: t.championId, name: t.championName }
+      } else {
+        entry.champions.push({ leagueId: nameToId[t.competition] || null, leagueName: t.competition, clubId: t.championId, name: t.championName })
+      }
+      return acc
+    }, [])
+    await db.careers.update(id, { history: career.history })
   }
   const noManager = clubs.filter((c) => c.id !== career.clubId && typeof c.manager !== 'string')
   if (noManager.length) {
@@ -520,7 +563,7 @@ export async function settleRound(careerId, number) {
     const newOffers = []
     let userSacked = false
     const userClubEntry = clubs.find((c) => c.id === career.clubId) || null
-    const trophies = (career.trophies || []).length
+    const trophies = userTrophies(career).length
     for (const c of clubs) {
       if (c.id === career.clubId) {
         // La sedia del mister scotta solo se la classifica va davvero male.
@@ -663,7 +706,7 @@ export async function applyForJob(careerId, clubId) {
     return { ok: false, reason: 'Hanno già il tuo curriculum: la risposta era no. I presidenti cambiano idea, ma non subito.' }
   }
   const userClubEntry = clubs.find((c) => c.id === career.clubId) || null
-  const trophies = (career.trophies || []).length
+  const trophies = userTrophies(career).length
   const rng = new Rng(seedFromString(career.seed + ':apply:' + career.season + ':' + clubId))
   const hit = rng.chance(applyProb(club, userClubEntry, trophies, !career.clubId))
   const applied = [...(jobs.applied || []), clubId]
@@ -969,6 +1012,11 @@ export async function endSeason(careerId) {
   summary.cupWinner = cupWinnerName
   summary.userCupWinner = cupWinnerId === career.clubId
 
+  // G5: i capocannonieri della stagione, contati prima che le
+  // statistiche si azzerino — a giugno la storia vuole i nomi.
+  const scorersByLeague = {}
+  for (const l of LEAGUES) scorersByLeague[l.id] = seasonTopScorer(players, clubs, l.id)
+
   const baseSeed = career.seed + ':' + career.season + ':'
 
   // I risultati valgono oro (G3.1): chi li ha messi in bacheca a giugno
@@ -1170,9 +1218,31 @@ export async function endSeason(careerId) {
         ...(career.trophies || []),
         ...LEAGUES.map((l) => {
           const ch = standingsByLeague[l.id][0]
-          return { season: career.season, competition: l.name, championId: ch.clubId, championName: ch.name }
+          return { season: career.season, competition: l.name, championId: ch.clubId, championName: ch.name, user: ch.clubId === career.clubId }
         }),
-        ...(cupWinnerId ? [{ season: career.season, competition: CUP_NAME, championId: cupWinnerId, championName: cupWinnerName }] : []),
+        ...(cupWinnerId ? [{ season: career.season, competition: CUP_NAME, championId: cupWinnerId, championName: cupWinnerName, user: cupWinnerId === career.clubId }] : []),
+      ],
+      albo: alboAfterSeason(career.albo, LEAGUES.map((l) => [l.id, standingsByLeague[l.id][0].clubId]), cupWinnerId),
+      history: [
+        ...(career.history || []),
+        {
+          season: career.season,
+          champions: LEAGUES.map((l) => {
+            const ch = standingsByLeague[l.id][0]
+            return { leagueId: l.id, leagueName: l.name, clubId: ch.clubId, name: ch.name }
+          }),
+          cup: cupWinnerId ? { clubId: cupWinnerId, name: cupWinnerName } : null,
+          scorers: LEAGUES.map((l) => ({ leagueId: l.id, leagueName: l.name, scorer: scorersByLeague[l.id] })),
+          user: {
+            clubId: career.clubId,
+            leagueName: userLeague.name,
+            position: summary.userPosition,
+            champion: summary.userChampion,
+            cupWinner: summary.userCupWinner,
+            promoted: summary.userPromoted,
+            relegated: summary.userRelegated,
+          },
+        },
       ],
     })
 
