@@ -8,6 +8,7 @@ import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResul
 import { expansionInfo } from '../game/finance'
 import { seatHeat } from '../game/jobs'
 import { scoutedPotential, scoutError, seniorScoutError, SCOUT_REPORT_COST } from '../game/scouting'
+import { alboTotals } from '../game/history'
 import { computeStandings } from '../game/standings'
 import { LEAGUES } from '../game/universe'
 import { simulateMatch, matchSeed } from '../game/engine'
@@ -398,6 +399,8 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const injuredCount = squad.filter((p) => p.injuredUntil && round <= p.injuredUntil).length
   const bannedCount = squad.filter((p) => p.bannedUntil && round <= p.bannedUntil).length
   const scouts = career.scouts || { level: 1, focus: null }
+  // G5: l'albo d'oro — passato del seed più stagioni giocate.
+  const albo = alboTotals(career.albo, career.history)
   const youthRanked = youth
     .slice()
     .sort((a, b) => scoutedPotential(b, scouts) - scoutedPotential(a, scouts))
@@ -895,6 +898,75 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               <p className="mt-3 text-xs text-slate-500">
                 Il potenziale dei giovani è una stima (~) dei tuoi osservatori: non tutti i giovani diventano campioni.
               </p>
+            </Card>
+            <Card title="Albo d'oro">
+              {LEAGUES.map((l) => {
+                const rows = Object.entries(albo.titles[l.id] || {}).sort((a, b) => b[1] - a[1]).slice(0, 6)
+                return (
+                  <div key={l.id} className="mb-3 last:mb-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">{l.name}</p>
+                    {rows.length ? (
+                      <ul className="mt-1 space-y-1 text-sm">
+                        {rows.map(([cid, n]) => (
+                          <li key={cid} className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate text-slate-300">{(clubById[cid] || {}).name || cid}</span>
+                            <span className="shrink-0 font-bold tabular-nums text-flood-300">{n}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">Nessun nome ancora: la serie aspetta.</p>
+                    )}
+                  </div>
+                )
+              })}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">{CUP_NAME}</p>
+                {Object.keys(albo.cups).length ? (
+                  <ul className="mt-1 space-y-1 text-sm">
+                    {Object.entries(albo.cups).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([cid, n]) => (
+                      <li key={cid} className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-slate-300">{(clubById[cid] || {}).name || cid}</span>
+                        <span className="shrink-0 font-bold tabular-nums text-flood-300">{n}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">Nessuna Coppa alzata, per ora.</p>
+                )}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+                {(career.albo && career.albo.seasons) || 0} stagioni di storia prima di te, più quelle giocate da quando sei qua: il blasone pesa, la coppa è più democratica.
+              </p>
+            </Card>
+            <Card title="Storia della lega">
+              {(career.history || []).length ? (
+                <ul className="space-y-2.5">
+                  {[...(career.history || [])].reverse().map((h) => (
+                    <li key={h.season} className="rounded-lg border border-slate-800 bg-pitch-900/40 p-2.5 text-xs leading-relaxed">
+                      <p className="text-sm font-semibold text-slate-200">Stagione {h.season}</p>
+                      <ul className="mt-1 space-y-0.5 text-slate-400">
+                        {(h.champions || []).map((ch) => (
+                          <li key={(ch.leagueId || '') + (ch.clubId || '')}>{ch.leagueName}: <b className="text-flood-300">{ch.name}</b></li>
+                        ))}
+                        {h.cup ? <li>Coppa: <b className="text-flood-300">{h.cup.name}</b></li> : null}
+                        {(h.scorers || []).filter((s) => s.scorer).map((s) => (
+                          <li key={s.leagueId || s.leagueName}>Capocannoniere ({s.leagueName}): {s.scorer.name} — <b className="text-teal-300">{s.scorer.goals} gol</b></li>
+                        ))}
+                        {h.user ? (
+                          <li className="text-teal-300">
+                            Tu: {h.user.position}° in {h.user.leagueName}{h.user.champion ? ' — campione' : ''}{h.user.cupWinner ? ' e Coppa in bacheca' : ''}{h.user.promoted ? ' — promosso' : ''}{h.user.relegated ? ' — retrocesso' : ''}
+                          </li>
+                        ) : null}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Nessun giugno ancora attraversato: il primo capitolo si scrive a fine stagione. L'albo del passato, però, esiste già.
+                </p>
+              )}
             </Card>
           </div>
         )}
