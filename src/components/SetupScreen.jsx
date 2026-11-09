@@ -37,13 +37,20 @@ export default function SetupScreen({ onStart, onBack }) {
     setSaving(true)
     // La durata scelta qui diventa il default della prossima carriera.
     window.localStorage.setItem('pitchtory-default-duration', duration)
-    const id = await createCareer({
-      seed,
-      seedText: seedText.trim() || null,
-      coachName: coachName.trim() || 'Mister',
-      clubId: selectedId,
-      matchDuration: duration,
-    })
+    let id = null
+    try {
+      id = await createCareer({
+        seed,
+        seedText: seedText.trim() || null,
+        coachName: coachName.trim() || 'Mister',
+        clubId: selectedId,
+        matchDuration: duration,
+      })
+    } catch (err) {
+      setSaving(false)
+      window.alert('Errore nel creare la carriera: ' + err.message)
+      return
+    }
     onStart(id)
   }
 

@@ -227,7 +227,10 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     createdAt: new Date().toISOString(),
   })
 
-  await db.transaction('rw', db.clubs, db.players, db.fixtures, async () => {
+  // NB: anche careers va nello scope della transazione: la finance degli
+  // sponsor tocca quella tabella e Dexie, senza, fa abortire tutta la
+  // creazione (stesso inciampo della fine stagione, v0.8.1).
+  await db.transaction('rw', db.careers, db.clubs, db.players, db.fixtures, async () => {
     await db.clubs.bulkAdd(universe.clubs.map((c) => ({ key: careerId + ':' + c.id, careerId, manager: c.id === clubId ? null : managerNameFor(seed, c.id, 0), ...c })))
     await db.players.bulkAdd(universe.players.map((p) => ({
       key: careerId + ':' + p.id,
