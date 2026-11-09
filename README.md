@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G4 — Occhi sui Grandi (v0.21.0): stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: G5 — Il Mercato degli Allenatori (albo d'oro e storia della lega).
+> Stato: G5 — Il Mercato degli Allenatori (v0.22.0): albo d'oro con il passato della lega, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: F7 — Capacitor (app vera).
 
 ## Sviluppo
 
@@ -196,6 +196,16 @@ altri club si leggono — da lontano, col binocolo della rete.
 
 Le carriere in corso sopravvivono: la rete legge i seniori dal primo mercato utile, niente nuova carriera richiesta.
 
+## L'albo d'oro e la storia (G5)
+
+La lega esisteva già prima del tuo arrivo — e adesso lo si vede.
+
+- **L'albo d'oro**: 24 stagioni di passato scritte dal seed (stesso seed, stessa storia), titoli per serie e Coppe pesati sul blasone — i grandi vincono spesso, la coppa è più democratica. Ogni giugno l'albo si aggiorna coi campioni veri.
+- **La storia della lega**: ogni stagione chiusa finisce nel tab Club — campioni di entrambe le serie, Coppa, capocannonieri con tanto di gol, e dove sei finito tu.
+- **I trofei del mister**: la bacheca della lega è una cosa, la tua vetrina un'altra. Home e candidature contano solo quello che hai vinto tu.
+
+Le carriere in corso sopravvivono: l'albo del passato arriva dalla migrazione, la storia si ricostruisce dai trofei già registrati. Niente nuova carriera richiesta.
+
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -232,7 +242,7 @@ Serie G — prima dell'app Android:
 - [x] G2 — Banco e Lavagnetta: sei moduli con slot per ruolo e dazio di posizione, matchup tra moduli, tattiche di squadra (mentalità, pressing, linea difensiva) che muovono i gol attesi, cambio modulo e mentalità in corsa, pannello cambi automatico sull'infortunio, undici titolare scelto slot per slot
 - [x] G3 — Cassa e Stadio: incassi da affluenza (forma, posizione, capienza), sponsor, monte ingaggi, stadio ampliabile a scaglioni, prestiti secchi, penalità federali per il rosso
 - [x] G4 — Occhi sui Grandi: stime sui seniori avversari (OVR a occhio, abilità coperte), report a €100k con la verità, scheda avversaria dal mercato
-- [ ] G5 — Il Mercato degli Allenatori: albo d'oro e storia della lega
+- [x] G5 — Il Mercato degli Allenatori: albo d'oro con il passato della lega generato dal seed, storia stagione per stagione (campioni, Coppa, capocannonieri), trofei del mister contati giusti
 - [x] G5.1 — Panchine a rischio: esoneri durante la stagione (club AI e mister), tab Panchina con offerte, candidature e panchine libere, cambio club a stagione in corso, lavoro estivo
 - [ ] F7 — Capacitor (app vera)
 - Post-rilascio: nazione estera, Nazionali
