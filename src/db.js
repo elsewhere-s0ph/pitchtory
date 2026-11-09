@@ -17,7 +17,7 @@ import { DEFAULT_TACTICS } from './game/tactics'
 import { matchdayGate, wagesPerRound, expansionInfo, penaltyPoints, federationMail, makeSponsorOffers, bestSponsorOffer, sponsorBonus } from './game/finance'
 import { managerNameFor, sackProb, offerChance, applyProb } from './game/jobs'
 import { SCOUT_REPORT_COST } from './game/scouting'
-import { generateAlbo, alboAfterSeason, seasonTopScorer } from './game/history'
+import { seasonTopScorer } from './game/history'
 
 const PERSONALITIES = ['Leader', 'Professionista', 'Temperamentale', 'Sognatore', 'Grintoso', 'Pacato']
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -222,7 +222,6 @@ export async function createCareer({ seed, seedText, coachName, clubId, matchDur
     scouts: { level: 1, focus: null },
     scouted: [],
     trophies: [],
-    albo: generateAlbo(seed, universe.clubs),
     history: [],
     createdAt: new Date().toISOString(),
   })
@@ -382,12 +381,12 @@ export async function loadCareer(id) {
     career.scouted = []
     await db.careers.update(id, { scouted: career.scouted })
   }
-  // Migrazione lazy (G5): l'albo d'oro esiste già — la lega aveva un
-  // passato prima del mister, scritto dal seed. Stesso seed, stessa
-  // storia: chi ce l'ha già non si tocca.
-  if (!career.albo) {
-    career.albo = generateAlbo(career.seed, clubs)
-    await db.careers.update(id, { albo: career.albo })
+  // L'albo d'oro nasce vuoto (v0.22.2): nessun passato inventato.
+  // Le carriere nate prima si portano dietro l'albo scritto dal seed:
+  // si butta, conta solo la storia giocata sul campo.
+  if (career.albo) {
+    career.albo = null
+    await db.careers.update(id, { albo: null })
   }
   // Migrazione lazy (G5): la storia delle stagioni giocate. Le
   // carriere nate prima di G5 la ricostruiscono dai trofei già
@@ -1225,7 +1224,6 @@ export async function endSeason(careerId) {
         }),
         ...(cupWinnerId ? [{ season: career.season, competition: CUP_NAME, championId: cupWinnerId, championName: cupWinnerName, user: cupWinnerId === career.clubId }] : []),
       ],
-      albo: alboAfterSeason(career.albo, LEAGUES.map((l) => [l.id, standingsByLeague[l.id][0].clubId]), cupWinnerId),
       history: [
         ...(career.history || []),
         {

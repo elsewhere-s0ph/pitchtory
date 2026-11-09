@@ -399,8 +399,8 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
   const injuredCount = squad.filter((p) => p.injuredUntil && round <= p.injuredUntil).length
   const bannedCount = squad.filter((p) => p.bannedUntil && round <= p.bannedUntil).length
   const scouts = career.scouts || { level: 1, focus: null }
-  // G5: l'albo d'oro — passato del seed più stagioni giocate.
-  const albo = alboTotals(career.albo, career.history)
+  // G5: l'albo d'oro nasce vuoto — conta solo le stagioni giocate.
+  const albo = alboTotals(career.history)
   const youthRanked = youth
     .slice()
     .sort((a, b) => scoutedPotential(b, scouts) - scoutedPotential(a, scouts))
@@ -900,44 +900,52 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
               </p>
             </Card>
             <Card title="Albo d'oro">
-              {LEAGUES.map((l) => {
-                const rows = Object.entries(albo.titles[l.id] || {}).sort((a, b) => b[1] - a[1]).slice(0, 6)
-                return (
-                  <div key={l.id} className="mb-3 last:mb-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">{l.name}</p>
-                    {rows.length ? (
-                      <ul className="mt-1 space-y-1 text-sm">
-                        {rows.map(([cid, n]) => (
-                          <li key={cid} className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-slate-300">{(clubById[cid] || {}).name || cid}</span>
-                            <span className="shrink-0 font-bold tabular-nums text-flood-300">{n}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-xs text-slate-500">Nessun nome ancora: la serie aspetta.</p>
-                    )}
-                  </div>
-                )
-              })}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">{CUP_NAME}</p>
-                {Object.keys(albo.cups).length ? (
-                  <ul className="mt-1 space-y-1 text-sm">
-                    {Object.entries(albo.cups).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([cid, n]) => (
-                      <li key={cid} className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-slate-300">{(clubById[cid] || {}).name || cid}</span>
-                        <span className="shrink-0 font-bold tabular-nums text-flood-300">{n}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-500">Nessuna Coppa alzata, per ora.</p>
-                )}
-              </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
-                {(career.albo && career.albo.seasons) || 0} stagioni di storia prima di te, più quelle giocate da quando sei qua: il blasone pesa, la coppa è più democratica.
-              </p>
+              {(career.history || []).length ? (
+                <>
+                {LEAGUES.map((l) => {
+                  const rows = Object.entries(albo.titles[l.id] || {}).sort((a, b) => b[1] - a[1]).slice(0, 6)
+                  return (
+                    <div key={l.id} className="mb-3 last:mb-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">{l.name}</p>
+                      {rows.length ? (
+                        <ul className="mt-1 space-y-1 text-sm">
+                          {rows.map(([cid, n]) => (
+                            <li key={cid} className="flex items-center gap-2">
+                              <span className="min-w-0 flex-1 truncate text-slate-300">{(clubById[cid] || {}).name || cid}</span>
+                              <span className="shrink-0 font-bold tabular-nums text-flood-300">{n}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-500">Nessun nome ancora: la serie aspetta.</p>
+                      )}
+                    </div>
+                  )
+                })}
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">{CUP_NAME}</p>
+                  {Object.keys(albo.cups).length ? (
+                    <ul className="mt-1 space-y-1 text-sm">
+                      {Object.entries(albo.cups).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([cid, n]) => (
+                        <li key={cid} className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-slate-300">{(clubById[cid] || {}).name || cid}</span>
+                          <span className="shrink-0 font-bold tabular-nums text-flood-300">{n}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-500">Nessuna Coppa alzata, per ora.</p>
+                  )}
+                </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+                    Nessun passato inventato: ogni riga è una stagione finita sul campo.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm leading-relaxed text-slate-400">
+                  Qui è tutto bianco: tocca a te scrivere la storia. Nessun campione, nessuna Coppa, nessun passato scritto dal seed — la prima riga si incide quando la prima stagione finisce davvero.
+                </p>
+              )}
             </Card>
             <Card title="Storia della lega">
               {(career.history || []).length ? (
@@ -964,7 +972,7 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
                 </ul>
               ) : (
                 <p className="text-xs text-slate-400">
-                  Nessun giugno ancora attraversato: il primo capitolo si scrive a fine stagione. L'albo del passato, però, esiste già.
+                  Nessun giugno ancora attraversato: il primo capitolo si scrive a fine stagione.
                 </p>
               )}
             </Card>

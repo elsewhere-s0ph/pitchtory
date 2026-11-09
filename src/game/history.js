@@ -1,71 +1,12 @@
-import { Rng, seedFromString } from '../lib/rng'
+/** La memoria della lega (G5): l'albo d'oro nasce vuoto e si riempie
+ *  solo con le stagioni finite davvero. Nessun passato scritto dal
+ *  seed: ogni riga dell'albo è un giugno attraversato dal mister. */
 
-/** L'albo d'oro ha un passato (G5): la lega esisteva già prima del
- *  mister. Le stagioni di prima le scrive il seed — stesso seed,
- *  stessa storia — e pesano il blasone: i grandi vincono spesso,
- *  ma non sempre. */
-export const PAST_SEASONS = 24
-
-/** Pesca pesata: il peso cresce col potenza, il blasone conta. */
-const weightedPick = (rng, items, power) => {
-  if (!items.length) return null
-  const weights = items.map((x) => Math.max(1, Math.round(Math.pow(Math.max(1, x.weight) / 100, power) * 1000)))
-  let sum = 0
-  for (const w of weights) sum += w
-  let roll = rng.int(1, sum)
-  for (let i = 0; i < items.length; i++) {
-    roll -= weights[i]
-    if (roll <= 0) return items[i].id
-  }
-  return items[items.length - 1].id
-}
-
-/** Genera l'albo pre-carriera: titoli per serie e Coppe di Bellandi,
- *  tutti deterministici dal seed. I titoli pesano il blasone alla
- *  quarta; la coppa è più democratica e guarda tutti e quaranta. */
-export function generateAlbo(seed, clubs) {
-  const rng = new Rng(seedFromString(seed + ':albo'))
-  const byLeague = {}
-  for (const c of clubs) {
-    byLeague[c.leagueId] = byLeague[c.leagueId] || []
-    byLeague[c.leagueId].push(c)
-  }
+/** Conti per la UI: tutto viene dalla storia giocata, stagione per
+ *  stagione. Il passato non esiste: esiste solo il presente registrato. */
+export function alboTotals(history) {
   const titles = {}
   const cups = {}
-  for (let s = 0; s < PAST_SEASONS; s++) {
-    for (const lid of Object.keys(byLeague)) {
-      const champ = weightedPick(rng, byLeague[lid].map((c) => ({ id: c.id, weight: c.reputation })), 4)
-      if (!champ) continue
-      titles[lid] = titles[lid] || {}
-      titles[lid][champ] = (titles[lid][champ] || 0) + 1
-    }
-    const cup = weightedPick(rng, clubs.map((c) => ({ id: c.id, weight: c.reputation })), 2)
-    if (cup) cups[cup] = (cups[cup] || 0) + 1
-  }
-  return { seasons: PAST_SEASONS, titles, cups }
-}
-
-/** Il capitolo di giugno: l'albo si aggiorna coi campioni veri. */
-export function alboAfterSeason(albo, championPairs, cupWinnerId) {
-  const base = albo || { seasons: 0, titles: {}, cups: {} }
-  const titles = {}
-  for (const lid of Object.keys(base.titles || {})) titles[lid] = { ...(base.titles[lid] || {}) }
-  const cups = { ...(base.cups || {}) }
-  for (const [lid, clubId] of championPairs || []) {
-    if (!lid || !clubId) continue
-    titles[lid] = titles[lid] || {}
-    titles[lid][clubId] = (titles[lid][clubId] || 0) + 1
-  }
-  if (cupWinnerId) cups[cupWinnerId] = (cups[cupWinnerId] || 0) + 1
-  return { seasons: base.seasons, titles, cups }
-}
-
-/** Conti combinati per la UI: passato del seed più stagioni giocate. */
-export function alboTotals(albo, history) {
-  const base = albo || { titles: {}, cups: {} }
-  const titles = {}
-  for (const lid of Object.keys(base.titles || {})) titles[lid] = { ...(base.titles[lid] || {}) }
-  const cups = { ...(base.cups || {}) }
   for (const h of history || []) {
     for (const ch of h.champions || []) {
       if (!ch.leagueId || !ch.clubId) continue
