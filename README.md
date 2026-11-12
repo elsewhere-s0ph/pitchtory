@@ -2,7 +2,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G5 — Il Mercato degli Allenatori (v0.25.0): campo vivo con le coreografie degli eventi e i QTE che si guardano — gol costruiti, contropiedi che corrono, rigori dal dischetto, cartellini che lampeggiano, zone che si accendono in avvicinamento dei momenti chiave e rigore visto dal dischetto — sopra 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: F7 — Capacitor (app vera).
+> Stato: G5 — Il Mercato degli Allenatori (v0.25.1): campo vivo con le coreografie degli eventi e i QTE che si guardano — gol costruiti, contropiedi che corrono, rigori dal dischetto, cartellini che lampeggiano, zone che si accendono in avvicinamento dei momenti chiave e rigore visto dal dischetto — sopra 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: F7 — Capacitor (app vera).
 
 ## Sviluppo
 
@@ -227,6 +227,11 @@ dado. Al momento del rigore la telecamera si avvicina: zoom morbido sul
 dischetto, rigore visto dalla prima fila. Risolto il momento, il campo torna
 intero. E quando la scheda è coperta o il telefono dorme, l’animazione non
 costa nulla: il campo respira solo quando respiri tu.
+
+Fix v0.25.1: il regista impantanava il tempo dopo il 90esimo — il ciclo dei
+segmenti voleva arrivare a 95,4 ma il possesso si fermava a 95,3, e la PWA
+si congelava al vai in campo. Ora il fischio finale arriva davvero, e il
+campo si spegne con lui.
 
 ## Stack
 

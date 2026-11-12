@@ -212,7 +212,10 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
   let pos = { x: CX, y: CY }
   let side = rng.chance(0.54) ? 'home' : 'away'
   let ai = 0
-  while (t < 95.4) {
+  // Il tempo deve sempre avanzare: meglio un ultimo possesso corto
+  // che una serata congelata sul 95esimo.
+  let guard = 0
+  while (t < 95.3 && guard++ < 600) {
     const m = ai < appointments.length ? appointments[ai] : null
     if (m !== null && m - t <= 7) {
       const e = hot[m]
