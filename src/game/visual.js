@@ -1,13 +1,18 @@
 /**
- * Campo Vivo (V1.1): la telecronaca che si vede. Il regista prende il
- * copione di buildMatch e lo trasforma in movimento: la palla viaggia
- * per zone di possesso, i 22 pallini tengono il modulo e il blocco
- * sale e scende con la palla. Puro e deterministico dal seed: stessa
- * partita, stesso movimento — ricaricare non cambia niente, come i QTE.
+ * Campo Vivo (V1.1 + V1.2): la telecronaca che si vede. Il regista prende
+ * il copione di buildMatch e lo trasforma in movimento: la palla viaggia
+ * per zone di possesso, i 22 pallini tengono il modulo e il blocco sale
+ * e scende con la palla. Puro e deterministico dal seed: stessa partita,
+ * stesso movimento — ricaricare non cambia niente, come i QTE.
+ *
+ * V1.2 — il regista degli eventi: ogni gol ha la sua azione costruita
+ * (possesso che sale, cambio di gioco, pallone in area, tiro SOLO
+ * dall'area o sul limite, palla in rete al minuto esatto della
+ * cronaca), i contropiedi dei QTE corrono, i rigori si vedono dal
+ * dischetto, le occasioni muoiono con la parata, i cartellini fanno
+ * lampeggiare il pallino del colpevole e il marcatore si accende d'oro.
  *
  * Regola di ferro: la coreografia serve la cronaca, non la sostituisce.
- * Le azioni da gol si costruiscono (possesso che sale, pallone in area)
- * e il tiro parte solo dall'area: niente schegge da centrocampo.
  */
 import { Rng } from '../lib/rng'
 import { FORMATIONS } from './tactics'
@@ -56,8 +61,8 @@ export function basePositions(formId) {
   return out
 }
 
-/** Il pallone non teletrasporta: da un punto all'altro con uno o due
- *  appoggi, così il possesso sembra giocato e non disegnato. */
+/** Il pallone non teletrasporta (possesso libero): da un punto
+ *  all'altro con uno o due appoggi, così il gioco sembra giocato. */
 function buildPath(rng, from, to) {
   const pts = [{ x: from.x, y: from.y }]
   const legs = rng.int(1, 2)
@@ -82,43 +87,183 @@ function pointAlong(path, u) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
 }
 
+/** x a N metri dalla linea di porta attaccata (negativo = dentro la rete). */
+function attackX(dir, meters) {
+  return CX + dir * (CX - meters)
+}
+
+/** Finestre di coreografia in minuti di partita: quanto tempo ha la
+ *  squadra per costruire l'azione prima dell'evento. Il contropiede
+ *  corre, il rigore si prepara in fretta, il gol costruito respira. */
+const CHOREO_WINDOW = {
+  goal: 4,
+  chance: 3,
+  'goal-counter': 2.2,
+  'chance-counter': 2.2,
+  pen: 1.8,
+  cross: 2.6,
+  freekick: 2.2,
+}
+
+/** Che coreografia merita l'evento: il tipo lo dice il copione, il
+ *  testo dice se è un rigore, un pallone dal bandierino o una
+ *  punizione; il badge qte segnala i colpi rapidi. */
+function choreoKind(e) {
+  const txt = e.text || ''
+  if (txt.indexOf('rigore') >= 0 || txt.indexOf('Rigore') >= 0) return 'pen'
+  if (
+    txt.indexOf('corner') >= 0 ||
+    txt.indexOf('Corner') >= 0 ||
+    txt.indexOf('incornata') >= 0 ||
+    txt.indexOf('colpo di testa') >= 0 ||
+    txt.indexOf('cross') >= 0 ||
+    txt.indexOf('Cross') >= 0
+  ) {
+    return 'cross'
+  }
+  if (txt.indexOf('punizione') >= 0 || txt.indexOf('Punizione') >= 0 || txt.indexOf('barriera') >= 0) return 'freekick'
+  if (e.qte) return e.type === 'goal' ? 'goal-counter' : 'chance-counter'
+  return e.type === 'goal' ? 'goal' : 'chance'
+}
+
+/** I waypoint della coreografia. Il tiro parte SOLO dall'area o sul
+ *  suo limite (mai da centrocampo), la rete sta dietro la linea e una
+ *  parata muore lontano dalla porta. Il lato lo suggerisce il seed, il
+ *  resto lo detta l'evento: porta e reparto arrivano dal copione. */
+function choreograph(rng, kind, isGoal, side, fromPt) {
+  const dir = side === 'home' ? 1 : -1
+  const at = (meters, y) => ({ x: attackX(dir, meters), y: clamp(y, 2, PITCH_H - 2) })
+  const flank = rng.chance(0.5) ? 1 : -1
+  const pts = [{ x: fromPt.x, y: fromPt.y }]
+  const finale = isGoal
+    ? at(-1.3, CY + rng.float() * 5.5 - 2.75)
+    : at(rng.float() * 10 + 22, CY + flank * (rng.float() * 14 + 10))
+
+  if (kind === 'pen') {
+    // Dal dischetto non si discute: la palla ci arriva, ci resta su,
+    // poi entra (o muore parata). La rete arriva al minuto esatto.
+    const spot = at(11, CY)
+    pts.push(spot, spot, spot, finale)
+    return pts
+  }
+  if (kind === 'freekick') {
+    // Palla sul limite dell'area, un respiro di attesa, poi il tiro.
+    const spot = at(rng.float() * 4 + 17, CY + flank * (rng.float() * 10 + 4))
+    pts.push(at(rng.float() * 8 + 34, CY + rng.float() * 18 - 9), spot, spot, finale)
+    return pts
+  }
+  // Il punto del tiro: dentro l'area o sul limite, sempre.
+  const shot = at(rng.float() * 9 + 5.5, CY + rng.float() * 17 - 8.5)
+  if (kind === 'cross') {
+    // Dal bandierino (o dalla fondina) arriva il pallone, poi il colpo
+    // di testa in area: la geometria del corner, senza inventarsi niente.
+    pts.push(at(rng.float() * 8 + 36, CY + rng.float() * 16 - 8))
+    pts.push(at(1.5, flank === 1 ? 3 : PITCH_H - 3))
+    pts.push(shot, finale)
+    return pts
+  }
+  if (kind === 'goal-counter' || kind === 'chance-counter') {
+    // Contropiede: recupero nella propria metà e via in verticale, due
+    // tocchi soltanto. Rapido, ma nasce da un recupero vero.
+    pts.push(at(rng.float() * 8 + 48, CY + rng.float() * 20 - 10))
+    pts.push(at(rng.float() * 8 + 28, CY + flank * (rng.float() * 8 + 6)))
+    pts.push(shot, finale)
+    return pts
+  }
+  // Azione costruita: possesso che sale, cambio di gioco, apertura sul
+  // lato, pallone in area. Come disegnata in lavagna.
+  pts.push(at(rng.float() * 10 + 42, CY + rng.float() * 22 - 11))
+  pts.push(at(rng.float() * 8 + 30, CY + flank * (rng.float() * 10 + 12)))
+  pts.push(at(rng.float() * 8 + 20, CY + flank * (rng.float() * 6 + 3)))
+  pts.push(shot, finale)
+  return pts
+}
+
 /** Il regista: dal copione (eventi del match, base più scelte live)
- *  ai frame. I gol e le occasioni sono appuntamenti sacri: il possesso
- *  arriva puntuale al loro minuto, nella zona giusta del campo. */
-export function makePitchDirector({ seedNumber, events }) {
+ *  ai frame. Gli undici servono ai lampeggii: il pallino del colpevole
+ *  o del marcatore è quello dello slot giusto, non uno a caso. */
+export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
   const rng = new Rng((seedNumber ^ 0x51ce) >>> 0)
+
+  // Gli appuntamenti sacri: gol e occasioni, col loro minuto esatto.
   const hot = {}
   for (const e of events || []) {
     if (e.type === 'goal' || e.type === 'chance') hot[e.minute] = e
   }
-  const marks = Object.keys(hot).map(Number).sort((a, b) => a - b)
+  const appointments = Object.keys(hot).map(Number).sort((a, b) => a - b)
+
+  // I lampeggii: cartellini gialli e rossi sul pallino del colpevole,
+  // alone oro sul marcatore. Mai un dado: lo slot lo dice l'undici.
+  const blinks = []
+  const dotOf = (e) => {
+    const list = e.side === 'home' ? homeXI : awayXI
+    if (!list || !list.length) return -1
+    const i = list.findIndex((p) => p.id === e.playerId)
+    return i >= 0 && i < 11 ? i : -1
+  }
+  for (const e of events || []) {
+    if (e.type === 'card' || e.type === 'red' || e.type === 'goal') {
+      blinks.push({ minute: e.minute, kind: e.type, side: e.side, dot: dotOf(e) })
+    }
+  }
 
   const segments = []
   let t = 0
   let pos = { x: CX, y: CY }
   let side = rng.chance(0.54) ? 'home' : 'away'
-  let mi = 0
-  while (t < 96) {
-    const mark = mi < marks.length ? marks[mi] : null
-    if (mark !== null && mark <= t + 3.5) {
-      // Possesso guidato all'evento: la squadra dell'evento ha palla e
-      // la porta dove dice la cronaca, esattamente al suo minuto.
-      const e = hot[mark]
+  let ai = 0
+  while (t < 95.4) {
+    const m = ai < appointments.length ? appointments[ai] : null
+    if (m !== null && m - t <= 7) {
+      const e = hot[m]
+      const kind = choreoKind(e)
+      // La squadra dell'evento prepara l'azione con la palla ai piedi.
       side = e.side
-      const to = Math.min(95.9, Math.max(t + 1, mark))
-      const dir = side === 'home' ? 1 : -1
-      const target =
-        e.type === 'goal'
-          ? { x: CX + dir * (CX - 1.2), y: CY + rng.float() * 8 - 4 }
-          : { x: CX + dir * (CX - rng.float() * 12 - 5), y: CY + rng.float() * 26 - 13 }
-      segments.push({ from: t, to, side, path: buildPath(rng, pos, target) })
-      pos = target
-      mi++
-      t = to
+      const from = Math.max(t + 0.05, m - (CHOREO_WINDOW[kind] || 3))
+      if (from > t + 0.2) {
+        // Attesa: possesso preparatorio che sale verso la zona dell'azione.
+        const xf = 0.42 + rng.float() * 0.3
+        const waitTarget = {
+          x: side === 'home' ? xf * PITCH_W : PITCH_W - xf * PITCH_W,
+          y: rng.float() * (PITCH_H - 20) + 10,
+        }
+        segments.push({ from: t, to: from, side, path: buildPath(rng, pos, waitTarget) })
+        pos = waitTarget
+      }
+      const ch = choreograph(rng, kind, e.type === 'goal', side, pos)
+      segments.push({ from, to: m, side, path: ch })
+      pos = ch[ch.length - 1]
+      if (e.type === 'goal') {
+        // Esultanza: la palla resta in rete, poi calcio d'inizio al
+        // centro — senza mai invadere il minuto dell'evento dopo.
+        const next = appointments[ai + 1]
+        const koTo = Math.min(95.3, m + 1, next !== undefined ? next - 0.8 : 95.3)
+        if (koTo > m + 0.2) {
+          segments.push({
+            from: m,
+            to: koTo,
+            side: e.side,
+            path: [
+              { x: pos.x, y: pos.y },
+              { x: pos.x, y: pos.y },
+              { x: CX, y: CY },
+            ],
+          })
+          pos = { x: CX, y: CY }
+          side = e.side === 'home' ? 'away' : 'home'
+          t = koTo
+        } else {
+          t = m
+        }
+      } else {
+        t = m
+      }
+      ai++
       continue
     }
     // Possesso libero: si viaggia nella propria metà, con sbirciate.
-    const to = Math.min(95.9, t + rng.int(1, 3))
+    let to = Math.min(95.3, t + rng.int(1, 3))
+    if (m !== null) to = Math.min(to, Math.max(t + 0.3, m - 7.2))
     const adv = rng.float() * 30 - 10
     const target = {
       x: side === 'home' ? clamp(CX + adv, 10, PITCH_W - 20) : clamp(CX - adv, 20, PITCH_W - 10),
@@ -152,6 +297,8 @@ export function makePitchDirector({ seedNumber, events }) {
   }
 
   return {
+    /** I lampeggii del regista, per il proiezionista. */
+    marks: blinks,
     /** Il frame al minuto (anche frazionario): palla, 22 pallini, possesso. */
     frameAt(minute, homeForm, awayForm) {
       const m = clamp(minute, 0, 95.9)

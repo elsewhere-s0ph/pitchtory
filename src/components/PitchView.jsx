@@ -4,11 +4,14 @@ import { PITCH_W, PITCH_H } from '../game/visual'
 const USER_FILL = '#2fb56e'
 const OPP_FILL = '#e0a83c'
 const LINE = '#2e6b47'
+const GOLD = '#e8b34e'
 
-/** Il campo vivo (V1.1): 22 pallini e la palla disegnati dal regista.
- *  Un requestAnimationFrame interpola il minuto tra i tick del gioco:
- *  il copione resta quello del seed, il movimento è solo presentazione.
- *  Nei QTE il minuto si ferma, e il campo si ferma con lui. */
+/** Il campo vivo (V1.1 + V1.2): 22 pallini e la palla disegnati dal
+ *  regista. Un requestAnimationFrame interpola il minuto tra i tick
+ *  del gioco: il copione resta quello del seed, il movimento è solo
+ *  presentazione. V1.2: i cartellini fanno lampeggiare il pallino del
+ *  colpevole (giallo o rosso) e il marcatore si accende d'oro. Nei QTE
+ *  il minuto si ferma, e il campo si ferma con lui. */
 export default function PitchView({ director, minute, events, homeForm, awayForm, userSide }) {
   const [hidden, setHidden] = useState(false)
   const ballRef = useRef(null)
@@ -16,13 +19,27 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
   const dotRefs = useRef([])
   const ringRef = useRef(null)
   const shoutRef = useRef(null)
-  const anim = useRef({ dm: 0, seen: 0, until: 0, dur: 1, color: '#e8b34e', isGoal: false })
+  const anim = useRef({ dm: 0, seen: 0, until: 0, dur: 1, color: GOLD, isGoal: false, blink: null })
   const live = useRef({})
   live.current = { director, minute, events, homeForm, awayForm, userSide }
 
   useEffect(() => {
     let raf = 0
     let prev = performance.now()
+    /** Il pallino torna del colore della sua squadra. */
+    const restoreDot = (idx) => {
+      if (idx === null || idx === undefined || idx < 0) return
+      const el = dotRefs.current[idx]
+      if (el) {
+        el.setAttribute('fill', idx < 11 ? USER_FILL : OPP_FILL)
+        el.setAttribute('r', '1.5')
+      }
+    }
+    /** Dallo slot nell'undici all'indice del pallino sul campo. */
+    const dotIndexFor = (b) => {
+      if (b.side === 'home') return userSide === 'home' ? b.dot : 11 + b.dot
+      return userSide === 'home' ? 11 + b.dot : b.dot
+    }
     const tick = (now) => {
       raf = requestAnimationFrame(tick)
       const dt = Math.min(0.1, (now - prev) / 1000)
@@ -37,8 +54,20 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
         if ((e.type === 'goal' || e.type === 'chance') && e.minute > a.seen && e.minute <= a.dm) {
           a.dur = e.type === 'goal' ? 1900 : 1100
           a.until = now + a.dur
-          a.color = e.type === 'goal' ? '#e8b34e' : '#cbd5e1'
+          a.color = e.type === 'goal' ? GOLD : '#cbd5e1'
           a.isGoal = e.type === 'goal'
+        }
+      }
+      // V1.2: i lampeggii del regista — cartellini e marcatori.
+      for (const b of p.director.marks || []) {
+        if (b.minute > a.seen && b.minute <= a.dm && b.dot >= 0 && b.dot < 11) {
+          if (b.kind === 'card' || b.kind === 'red') {
+            restoreDot(a.blink ? a.blink.dot : -1)
+            a.blink = { until: now + 1500, color: b.kind === 'red' ? '#ef4444' : '#eab308', dot: dotIndexFor(b) }
+          } else if (b.kind === 'goal') {
+            restoreDot(a.blink ? a.blink.dot : -1)
+            a.blink = { until: now + (a.isGoal ? a.dur : 1200), color: GOLD, dot: dotIndexFor(b) }
+          }
         }
       }
       a.seen = a.dm
@@ -56,6 +85,19 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
           if (el) setPt(el, pt.x, pt.y)
         })
       })
+      // Il pallino che lampeggia: cartellino giallo/rosso o marcatore oro.
+      if (a.blink) {
+        const el = dotRefs.current[a.blink.dot]
+        if (now < a.blink.until) {
+          if (el) {
+            el.setAttribute('fill', a.blink.color)
+            el.setAttribute('r', (1.5 + Math.abs(Math.sin(now / 110)) * 0.9).toFixed(2))
+          }
+        } else {
+          restoreDot(a.blink.dot)
+          a.blink = null
+        }
+      }
       if (ringRef.current) {
         if (now < a.until) {
           const k = 1 - (a.until - now) / a.dur
@@ -80,6 +122,7 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
@@ -128,7 +171,7 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
             ))}
             <circle ref={haloRef} cx="-5" cy="-5" r="2.4" fill="#f4f7f5" opacity="0.25" />
             <circle ref={ballRef} cx="-5" cy="-5" r="1.1" fill="#f4f7f5" />
-            <text ref={shoutRef} fontSize="3.4" fontWeight="700" fill="#e8b34e" textAnchor="middle" opacity="0">
+            <text ref={shoutRef} fontSize="3.4" fontWeight="700" fill={GOLD} textAnchor="middle" opacity="0">
               GOL!
             </text>
           </svg>
