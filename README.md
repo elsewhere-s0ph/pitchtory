@@ -1,14 +1,8 @@
-
-
-
-
-
-
 # Pitchtory ⚽
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G5 — Il Mercato degli Allenatori (v0.23.0): campo vivo con 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: V1.2 — le coreografie degli eventi sul campo vivo; poi F7 — Capacitor (app vera).
+> Stato: G5 — Il Mercato degli Allenatori (v0.24.0): campo vivo con le coreografie degli eventi — gol costruiti, contropiedi che corrono, rigori dal dischetto, cartellini che lampeggiano — sopra 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: V1.3 — QTE sul campo e rifiniture; poi F7 — Capacitor (app vera).
 
 ## Sviluppo
 
@@ -210,6 +204,20 @@ Le carriere in corso sopravvivono: l'albo inventato del seed viene buttato via, 
 
 La telecronaca non si legge solo: si guarda. Sopra la cronaca vive un campo orizzontale con 22 pallini sui moduli scelti in Lavagnetta e la palla che viaggia per zone di possesso. Il regista (src/game/visual.js) è puro e deterministico dal seed: gol e occasioni sono appuntamenti sacri — il possesso arriva puntuale al loro minuto, nella zona giusta, con la costruzione che serve (niente schegge da centrocampo). Nei QTE il minuto si ferma, e il campo si ferma con lui. Il movimento è solo presentazione: il copione resta quello.
 
+## Le coreografie (V1.2)
+
+Gli eventi non si vedono solo arrivare: si guardano succedere. Ogni gol ha la
+sua azione costruita — possesso che sale, cambio di gioco, apertura sul lato,
+pallone in area, tiro solo dall’area o sul limite, palla in rete — sincronizzata
+al minuto esatto della cronaca. I contropiedi dei QTE corrono: recupero nella
+propria metà e via in verticale, due tocchi soltanto. I rigori si vedono dal
+dischetto, con la palla che ci resta su e poi entra. Le occasioni muoiono come
+muoiono: tiro, parata, palla che sfuma largo. I palloni dai corner arrivano dal
+bandierino, le punizioni si calciano dal limite. E i cartellini fanno lampeggiare
+il pallino del colpevole — giallo o rosso — mentre il marcatore si accende d’oro.
+Tutto deterministico dal seed, come tutto il resto: stessa partita, stessa
+coreografia.
+
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -251,7 +259,7 @@ Serie G — prima dell'app Android:
 Campo vivo — prima dell'app Android:
 
 - [x] V1.1 — Il campo che respira: campo orizzontale con 22 pallini sui moduli reali e la palla che viaggia per zone di possesso, guidata dal copione del match
-- [ ] V1.2 — Il regista degli eventi: coreografie di gol, occasioni e contropiedi sincronizzate con la cronaca
+- [x] V1.2 — Il regista degli eventi: gol costruiti con passaggi e tiro dall’area, contropiedi che corrono, rigori dal dischetto, cross dal bandierino, cartellini che lampeggiano
 - [ ] V1.3 — QTE sul campo: zone che si accendono, rigori visti dal dischetto, rifiniture
 - [ ] F7 — Capacitor (app vera)
 - Post-rilascio: nazione estera, Nazionali

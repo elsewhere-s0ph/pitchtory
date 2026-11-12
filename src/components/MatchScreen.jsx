@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, subImpact } from '../game/engine'
@@ -207,9 +201,16 @@ export default function MatchScreen({ fixture, onDone }) {
     [match, momentEvents, subEvents, dismissedIdx],
   )
 
-  // Campo Vivo (V1.1): il regista del campo — stesso copione, stesso movimento.
+  // Campo Vivo (V1.1 + V1.2): il regista del campo — stesso copione,
+  // stesso movimento, e gli undici veri per i lampeggii dei pallini.
   const pitchDirector = useMemo(
-    () => makePitchDirector({ seedNumber: match.seedNumber, events: allEvents }),
+    () =>
+      makePitchDirector({
+        seedNumber: match.seedNumber,
+        events: allEvents,
+        homeXI: match.homeXI,
+        awayXI: match.awayXI,
+      }),
     [match, allEvents],
   )
 
