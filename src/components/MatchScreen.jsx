@@ -13,6 +13,8 @@ import { hasAbility } from '../game/abilities'
 import { LEAGUES } from '../game/universe'
 import { CUP_NAME, CUP_ROUNDS } from '../db'
 import PensShootout from './PensShootout'
+import PitchView from './PitchView'
+import { makePitchDirector } from '../game/visual'
 
 /** Millisecondi per minuto simulato, per durata partita configurata. */
 const MS_PER_MINUTE = { short: 800, normal: 3500, long: 4700 }
@@ -203,6 +205,12 @@ export default function MatchScreen({ fixture, onDone }) {
         (a, b) => a.minute - b.minute,
       ),
     [match, momentEvents, subEvents, dismissedIdx],
+  )
+
+  // Campo Vivo (V1.1): il regista del campo — stesso copione, stesso movimento.
+  const pitchDirector = useMemo(
+    () => makePitchDirector({ seedNumber: match.seedNumber, events: allEvents }),
+    [match, allEvents],
   )
 
   const pendingMoment = match.keyMoments.find((m) => m.minute <= minute && resolved[m.id] === undefined)
@@ -623,6 +631,15 @@ export default function MatchScreen({ fixture, onDone }) {
                 style={{ width: (minute / FULL_TIME) * 100 + '%' }}
               />
             </div>
+
+            <PitchView
+              director={pitchDirector}
+              minute={minute}
+              events={allEvents}
+              homeForm={match.userIsHome ? activeFormation : match.homeTactics.formation}
+              awayForm={match.userIsHome ? match.awayTactics.formation : activeFormation}
+              userSide={userSide}
+            />
 
             {phase === 'live' && subsLeft > 0 && (
               <button

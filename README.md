@@ -8,7 +8,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G5 — Il Mercato degli Allenatori (v0.22.2): albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: F7 — Capacitor (app vera).
+> Stato: G5 — Il Mercato degli Allenatori (v0.23.0): campo vivo con 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: V1.2 — le coreografie degli eventi sul campo vivo; poi F7 — Capacitor (app vera).
 
 ## Sviluppo
 
@@ -206,6 +206,10 @@ L'albo nasce bianco: nessun passato inventato, ogni riga è una stagione finita 
 
 Le carriere in corso sopravvivono: l'albo inventato del seed viene buttato via, la storia giocata resta intatta. Niente nuova carriera richiesta.
 
+## Il campo vivo (V1.1)
+
+La telecronaca non si legge solo: si guarda. Sopra la cronaca vive un campo orizzontale con 22 pallini sui moduli scelti in Lavagnetta e la palla che viaggia per zone di possesso. Il regista (src/game/visual.js) è puro e deterministico dal seed: gol e occasioni sono appuntamenti sacri — il possesso arriva puntuale al loro minuto, nella zona giusta, con la costruzione che serve (niente schegge da centrocampo). Nei QTE il minuto si ferma, e il campo si ferma con lui. Il movimento è solo presentazione: il copione resta quello.
+
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -244,6 +248,11 @@ Serie G — prima dell'app Android:
 - [x] G4 — Occhi sui Grandi: stime sui seniori avversari (OVR a occhio, abilità coperte), report a €100k con la verità, scheda avversaria dal mercato
 - [x] G5 — Il Mercato degli Allenatori: albo d'oro a pagina bianca che si riempie solo con le stagioni giocate, storia stagione per stagione (campioni, Coppa, capocannonieri), trofei del mister contati giusti
 - [x] G5.1 — Panchine a rischio: esoneri durante la stagione (club AI e mister), tab Panchina con offerte, candidature e panchine libere, cambio club a stagione in corso, lavoro estivo
+Campo vivo — prima dell'app Android:
+
+- [x] V1.1 — Il campo che respira: campo orizzontale con 22 pallini sui moduli reali e la palla che viaggia per zone di possesso, guidata dal copione del match
+- [ ] V1.2 — Il regista degli eventi: coreografie di gol, occasioni e contropiedi sincronizzate con la cronaca
+- [ ] V1.3 — QTE sul campo: zone che si accendono, rigori visti dal dischetto, rifiniture
 - [ ] F7 — Capacitor (app vera)
 - Post-rilascio: nazione estera, Nazionali
 

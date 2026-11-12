@@ -6,7 +6,7 @@
 
 {
   "name": "pitchtory",
-  "version": "0.22.2",
+  "version": "0.23.0",
   "private": true,
   "type": "module",
   "scripts": {
