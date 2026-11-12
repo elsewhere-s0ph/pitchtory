@@ -5,23 +5,41 @@ const USER_FILL = '#2fb56e'
 const OPP_FILL = '#e0a83c'
 const LINE = '#2e6b47'
 const GOLD = '#e8b34e'
+const FULL_VB = [-2, -2, PITCH_W + 4, PITCH_H + 4]
 
-/** Il campo vivo (V1.1 + V1.2): 22 pallini e la palla disegnati dal
+/** Il tipo di QTE dal testo del prompt: serve a scegliere zona e zoom. */
+function qteKindOf(prompt) {
+  const p = (prompt || '').toLowerCase()
+  if (p.includes('rigore')) return 'pen'
+  if (p.includes('uno contro uno')) return 'one'
+  if (p.includes('contropiede')) return 'counter'
+  if (p.includes('punizione')) return 'freekick'
+  if (p.includes('corner')) return 'corner'
+  return 'other'
+}
+
+/** Il campo vivo (V1.1 + V1.2 + V1.3): 22 pallini e la palla disegnati dal
  *  regista. Un requestAnimationFrame interpola il minuto tra i tick
  *  del gioco: il copione resta quello del seed, il movimento è solo
  *  presentazione. V1.2: i cartellini fanno lampeggiare il pallino del
- *  colpevole (giallo o rosso) e il marcatore si accende d'oro. Nei QTE
- *  il minuto si ferma, e il campo si ferma con lui. */
-export default function PitchView({ director, minute, events, homeForm, awayForm, userSide }) {
+ *  colpevole (giallo o rosso) e il marcatore si accende d’oro. V1.3: i
+ *  QTE si guardano — la zona si accende in avvicinamento del momento
+ *  chiave e il rigore si vede dal dischetto, con uno zoom morbido. Nei
+ *  QTE il minuto si ferma, e il campo si ferma con lui. */
+export default function PitchView({ director, minute, events, homeForm, awayForm, userSide, qte, nextQte }) {
   const [hidden, setHidden] = useState(false)
+  const svgRef = useRef(null)
+  const zoneRef = useRef(null)
   const ballRef = useRef(null)
   const haloRef = useRef(null)
   const dotRefs = useRef([])
   const ringRef = useRef(null)
   const shoutRef = useRef(null)
   const anim = useRef({ dm: 0, seen: 0, until: 0, dur: 1, color: GOLD, isGoal: false, blink: null })
+  const vb = useRef(FULL_VB.slice())
+  const spotCache = useRef({ minute: -1, x: 52.5, y: 34 })
   const live = useRef({})
-  live.current = { director, minute, events, homeForm, awayForm, userSide }
+  live.current = { director, minute, events, homeForm, awayForm, userSide, qte, nextQte }
 
   useEffect(() => {
     let raf = 0
@@ -44,6 +62,8 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
       raf = requestAnimationFrame(tick)
       const dt = Math.min(0.1, (now - prev) / 1000)
       prev = now
+      // Performance mobile: a scheda nascosta il campo non costa nulla.
+      if (typeof document !== 'undefined' && document.hidden) return
       const a = anim.current
       const p = live.current
       if (!p.director || !ballRef.current) return
@@ -119,6 +139,46 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
           shoutRef.current.setAttribute('opacity', '0')
         }
       }
+      // V1.3: la zona del QTE si accende in avvicinamento, e il rigore
+      // si guarda dal dischetto — zoom morbido sull area della porta.
+      const activeQte = p.qte || (p.nextQte && a.dm > p.nextQte.minute - 2.2 ? p.nextQte : null)
+      let zx = null
+      let zy = null
+      let zk = 0
+      let zoomPen = false
+      if (activeQte) {
+        const qm = Math.min(activeQte.minute, 95.9)
+        if (spotCache.current.minute !== qm) {
+          const qfr = p.director.frameAt(qm, p.homeForm, p.awayForm)
+          spotCache.current = { minute: qm, x: qfr.ball.x, y: qfr.ball.y }
+        }
+        zx = spotCache.current.x
+        zy = spotCache.current.y
+        zk = p.qte ? 1 : Math.min(1, Math.max(0, 1 - (activeQte.minute - a.dm) / 2.2))
+        zoomPen = qteKindOf(activeQte.prompt) === 'pen'
+      }
+      let vbTarget = FULL_VB
+      if (zoomPen && zx !== null) {
+        const prompt = (activeQte.prompt || '').toLowerCase()
+        const defensive = prompt.includes('difend') || prompt.includes('fermare')
+        const gx = defensive
+          ? (p.userSide === 'home' ? 0 : PITCH_W)
+          : (p.userSide === 'home' ? PITCH_W : 0)
+        const cx = Math.min(89, Math.max(16, (gx + zx) / 2))
+        const cy = Math.min(53, Math.max(15, (PITCH_H / 2 + zy) / 2))
+        vbTarget = [cx - 19, cy - 15, 38, 30]
+      }
+      for (let i = 0; i < 4; i++) vb.current[i] += (vbTarget[i] - vb.current[i]) * Math.min(1, dt * 4)
+      if (svgRef.current) svgRef.current.setAttribute('viewBox', vb.current.map((v) => v.toFixed(2)).join(' '))
+      if (zoneRef.current) {
+        if (zx !== null && zk > 0) {
+          zoneRef.current.setAttribute('cx', zx.toFixed(2))
+          zoneRef.current.setAttribute('cy', zy.toFixed(2))
+          zoneRef.current.setAttribute('opacity', (zk * (0.3 + 0.18 * Math.sin(now / 170))).toFixed(3))
+        } else {
+          zoneRef.current.setAttribute('opacity', '0')
+        }
+      }
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
@@ -138,7 +198,11 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
       </div>
       {!hidden && (
         <div className="mt-1 overflow-hidden rounded-xl border border-pitch-700/60 bg-pitch-950">
-          <svg viewBox={'-2 -2 ' + (PITCH_W + 4) + ' ' + (PITCH_H + 4)} className="block w-full">
+          <svg
+            ref={svgRef}
+            viewBox={'-2 -2 ' + (PITCH_W + 4) + ' ' + (PITCH_H + 4)}
+            className="block w-full"
+          >
             <rect x="0" y="0" width={PITCH_W} height={PITCH_H} fill="#081a10" />
             {[0, 2, 4].map((i) => (
               <rect key={'s' + i} x={i * (PITCH_W / 6)} y="0" width={PITCH_W / 6} height={PITCH_H} fill="#0a2013" />
@@ -156,6 +220,7 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
             <circle cx={PITCH_W - 11} cy={PITCH_H / 2} r="0.5" fill={LINE} />
             <rect x="0" y="30.34" width="1.4" height="7.32" fill="#64748b" />
             <rect x={PITCH_W - 1.4} y="30.34" width="1.4" height="7.32" fill="#64748b" />
+            <circle ref={zoneRef} r="7" fill={GOLD} opacity="0" />
             <circle ref={ringRef} r="3" fill="none" strokeWidth="0.8" opacity="0" />
             {Array.from({ length: 22 }).map((_, i) => (
               <circle

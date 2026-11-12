@@ -215,6 +215,11 @@ export default function MatchScreen({ fixture, onDone }) {
   )
 
   const pendingMoment = match.keyMoments.find((m) => m.minute <= minute && resolved[m.id] === undefined)
+  /** Il prossimo QTE in arrivo: il campo lo preannuncia con la zona che si accende. */
+  const upcomingQte = useMemo(
+    () => match.keyMoments.find((m) => m.minute > minute && resolved[m.id] === undefined) || null,
+    [match, minute, resolved],
+  )
 
   /** Giocatori coinvolti in un momento chiave non ancora risolto: non si cambiano. */
   const locked = useMemo(() => {
@@ -640,6 +645,8 @@ export default function MatchScreen({ fixture, onDone }) {
               homeForm={match.userIsHome ? activeFormation : match.homeTactics.formation}
               awayForm={match.userIsHome ? match.awayTactics.formation : activeFormation}
               userSide={userSide}
+              qte={pendingMoment || null}
+              nextQte={upcomingQte}
             />
 
             {phase === 'live' && subsLeft > 0 && (

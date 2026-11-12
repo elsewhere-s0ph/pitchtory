@@ -2,7 +2,7 @@
 
 **Pitch + Victory.** Il football manager definitivo in formato PWA. Tutto client-side: nessun account, nessun server — la carriera vive sul tuo dispositivo.
 
-> Stato: G5 — Il Mercato degli Allenatori (v0.24.0): campo vivo con le coreografie degli eventi — gol costruiti, contropiedi che corrono, rigori dal dischetto, cartellini che lampeggiano — sopra 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: V1.3 — QTE sul campo e rifiniture; poi F7 — Capacitor (app vera).
+> Stato: G5 — Il Mercato degli Allenatori (v0.25.0): campo vivo con le coreografie degli eventi e i QTE che si guardano — gol costruiti, contropiedi che corrono, rigori dal dischetto, cartellini che lampeggiano, zone che si accendono in avvicinamento dei momenti chiave e rigore visto dal dischetto — sopra 22 pallini e palla che seguono il copione, albo d'oro a pagina bianca che si riempie di sole stagioni giocate, storia stagione per stagione e trofei del mister contati giusti — sopra Occhi sui Grandi: stime sui seniori avversari e report a €100k che dicono la verità — sopra Panchine a rischio: esoneri in corsa, tab Panchina con offerte e candidature, e pure la sedia del mister che può traballare — sopra Cassa e Stadio: incassi da biglietti legati a capienza, posizione e forma, sponsor cercati a inizio stagione con pool di offerte, base alla firma e bonus sugli obiettivi, stipendi a ogni giornata, stadio ampliabile a scaglioni, prestiti nel mercato, e la Federazione che punisce il rosso con la posta e i punti — sopra Banco e Lavagnetta (sei moduli, undici scelto slot per slot, tattiche e mentalità in corsa), La Piramide (due leghe, Coppa Bellandi a sedici infrasettimanale con rigori giocati), motore QTE, mercato, abilità, osservatorio, identità «Notte di Divisione d'Onore» e PWA completa — con la Home d'ingresso: crest sotto i riflettori, Continua a un tuffo, Aiuto & FAQ a schede e impostazioni. Prossima: F7 — Capacitor (app vera).
 
 ## Sviluppo
 
@@ -218,6 +218,16 @@ il pallino del colpevole — giallo o rosso — mentre il marcatore si accende d
 Tutto deterministico dal seed, come tutto il resto: stessa partita, stessa
 coreografia.
 
+## I QTE sul campo (V1.3)
+
+I momenti chiave non si scelgono solo: si vedono arrivare. Quando un QTE si
+avvicina, la zona del campo dove accadrà si accende a intermittenza — dov’è
+la palla, lì nascerà l’azione, perché la zona la disegna il regista e non un
+dado. Al momento del rigore la telecamera si avvicina: zoom morbido sul
+dischetto, rigore visto dalla prima fila. Risolto il momento, il campo torna
+intero. E quando la scheda è coperta o il telefono dorme, l’animazione non
+costa nulla: il campo respira solo quando respiri tu.
+
 ## Stack
 
 React · Vite · Tailwind CSS · Dexie (IndexedDB) · Zustand · PRNG con seed (carriere deterministiche e condivisibili)
@@ -260,7 +270,7 @@ Campo vivo — prima dell'app Android:
 
 - [x] V1.1 — Il campo che respira: campo orizzontale con 22 pallini sui moduli reali e la palla che viaggia per zone di possesso, guidata dal copione del match
 - [x] V1.2 — Il regista degli eventi: gol costruiti con passaggi e tiro dall’area, contropiedi che corrono, rigori dal dischetto, cross dal bandierino, cartellini che lampeggiano
-- [ ] V1.3 — QTE sul campo: zone che si accendono, rigori visti dal dischetto, rifiniture
+- [x] V1.3 — QTE sul campo: zone che si accendono in avvicinamento dei momenti chiave, rigori visti dal dischetto con zoom sull’area, animazione a riposo quando non serve
 - [ ] F7 — Capacitor (app vera)
 - Post-rilascio: nazione estera, Nazionali
 
