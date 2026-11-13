@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { buildMatch, matchSeedNumber, subImpact } from '../game/engine'
 import { Rng, seedFromString } from '../lib/rng'
-import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, bestXIFor, lineupXI } from '../game/tactics'
+import { FORMATIONS, FORMATION_ORDER, DEFAULT_TACTICS, affinity, bestXIFor, lineupXI, remapPicks } from '../game/tactics'
 import { hasAbility } from '../game/abilities'
 import { LEAGUES } from '../game/universe'
-import { CUP_NAME, CUP_ROUNDS } from '../db'
+import { CUP_NAME, CUP_ROUNDS, setLineup, setTactics } from '../db'
 import PensShootout from './PensShootout'
 import PitchView from './PitchView'
 import { makePitchDirector } from '../game/visual'
@@ -383,6 +383,13 @@ export default function MatchScreen({ fixture, onDone }) {
     const oldF = activeFormation
     setCurrentFormation(newFormation)
     setFormChangesOpen(false)
+    // La lavagnetta in corsa diventa legge: il modulo provato in partita
+    // resta anche per la prossima, con l’undici riassetto sugli slot nuovi.
+    // Prima svaniva al fischio finale e la squadra tornava nel modulo vecchio.
+    setTactics(career.id, { ...userTactics, formation: newFormation }).catch(() => {})
+    if (userPicks) {
+      setLineup(career.id, { formation: newFormation, picks: remapPicks(newFormation, userSquad, userPicks) }).catch(() => {})
+    }
     const rng = new Rng(seedFromString('formchange:' + match.seedNumber + ':' + m + ':' + newFormation))
     const roll = rng.float()
     const cnt = (f) => {

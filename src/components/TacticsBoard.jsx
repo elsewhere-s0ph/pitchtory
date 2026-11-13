@@ -115,9 +115,13 @@ export default function TacticsBoard({ career, squad, round, onDone }) {
   }
 
   async function save() {
-    await setTactics(career.id, draft)
-    await setLineup(career.id, hasPicks ? { formation: draft.formation, picks } : null)
-    onDone()
+    try {
+      await setTactics(career.id, draft)
+      await setLineup(career.id, hasPicks ? { formation: draft.formation, picks } : null)
+      onDone()
+    } catch (err) {
+      window.alert('La lavagnetta non ha salvato: ' + err.message + ' — riprova prima di scendere in campo.')
+    }
   }
 
   return (

@@ -66,11 +66,18 @@ export function basePositions(formId) {
 function buildPath(rng, from, to) {
   const pts = [{ x: from.x, y: from.y }]
   const legs = rng.int(1, 2)
+  // Lo scarto dei tocchi scala con la lunghezza del passaggio: sui
+  // passaggi corti la palla non zigzaga più senza motivo.
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const leg = Math.sqrt(dx * dx + dy * dy) / (legs + 1)
+  const jx = Math.min(7, leg * 0.35)
+  const jy = Math.min(8, leg * 0.4)
   for (let i = 1; i <= legs; i++) {
     const u = i / (legs + 1)
     pts.push({
-      x: from.x + (to.x - from.x) * u + rng.float() * 14 - 7,
-      y: from.y + (to.y - from.y) * u + rng.float() * 16 - 8,
+      x: from.x + dx * u + rng.float() * jx * 2 - jx,
+      y: from.y + dy * u + rng.float() * jy * 2 - jy,
     })
   }
   pts.push({ x: to.x, y: to.y })
@@ -163,10 +170,14 @@ function choreograph(rng, kind, isGoal, side, fromPt) {
     return pts
   }
   if (kind === 'goal-counter' || kind === 'chance-counter') {
-    // Contropiede: recupero nella propria metà e via in verticale, due
-    // tocchi soltanto. Rapido, ma nasce da un recupero vero.
-    pts.push(at(rng.float() * 8 + 48, CY + rng.float() * 20 - 10))
-    pts.push(at(rng.float() * 8 + 28, CY + flank * (rng.float() * 8 + 6)))
+    // Contropiede: il recupero avviene vicino a dove la palla si trova
+    // davvero (un respiro indietro, non un salto a centrocampo), poi si
+    // corre in verticale, due tocchi soltanto.
+    const pm = CX - dir * (fromPt.x - CX)
+    const m1 = clamp(pm + rng.float() * 10 + 4, 26, 62)
+    const m2 = clamp(m1 - rng.float() * 12 - 12, 18, m1 - 8)
+    pts.push(at(m1, clamp(fromPt.y + rng.float() * 12 - 6, 8, PITCH_H - 8)))
+    pts.push(at(m2, CY + flank * (rng.float() * 8 + 6)))
     pts.push(shot, finale)
     return pts
   }
@@ -212,6 +223,9 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
   let pos = { x: CX, y: CY }
   let side = rng.chance(0.54) ? 'home' : 'away'
   let ai = 0
+  // Fasi di possesso: la palla resta a una squadra per qualche tocco,
+  // il cambio palla è un evento e non un dado che rulla ogni minuto.
+  let phaseLeft = rng.int(2, 4)
   // Il tempo deve sempre avanzare: meglio un ultimo possesso corto
   // che una serata congelata sul 95esimo.
   let guard = 0
@@ -264,17 +278,30 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
       ai++
       continue
     }
-    // Possesso libero: si viaggia nella propria metà, con sbirciate.
+    // Possesso libero: la squadra in possesso spinge verso la porta
+    // avversaria a tocchi corti; arrivata in profondità si riorganizza
+    // e riparte indietro. Niente più punti casuali su tutto il campo.
     let to = Math.min(95.3, t + rng.int(1, 3))
     if (m !== null) to = Math.min(to, Math.max(t + 0.3, m - 7.2))
-    const adv = rng.float() * 30 - 10
+    const fdir = side === 'home' ? 1 : -1
+    const deep = fdir === 1 ? pos.x > PITCH_W - 28 : pos.x < 28
+    const step = deep ? -(rng.float() * 16 + 6) : rng.float() * 18 - 3
+    const lateral = rng.float() * 22 - 11
     const target = {
-      x: side === 'home' ? clamp(CX + adv, 10, PITCH_W - 20) : clamp(CX - adv, 20, PITCH_W - 10),
-      y: rng.float() * (PITCH_H - 20) + 10,
+      x: clamp(pos.x + fdir * step, 8, PITCH_W - 8),
+      y: clamp(pos.y + lateral + (CY - pos.y) * 0.12, 6, PITCH_H - 6),
     }
     segments.push({ from: t, to, side, path: buildPath(rng, pos, target) })
     pos = target
-    if (rng.chance(0.45)) side = side === 'home' ? 'away' : 'home'
+    // I ponti corti verso le coreografie non toccano il possesso.
+    if (to - t >= 0.5) {
+      phaseLeft -= 1
+      if (phaseLeft <= 0 || rng.chance(0.15)) {
+        // Cambio palla: la nuova squadra riparte da qui, con continuità.
+        side = side === 'home' ? 'away' : 'home'
+        phaseLeft = rng.int(2, 4)
+      }
+    }
     t = to
   }
 
@@ -305,12 +332,12 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
     /** Il frame al minuto (anche frazionario): palla, 22 pallini, possesso. */
     frameAt(minute, homeForm, awayForm) {
       const m = clamp(minute, 0, 95.9)
-      let seg = segments[segments.length - 1]
+      // L’ultimo segmento iniziato vince: nessun buco tra i segmenti,
+      // la palla non salta mai da un punto all’altro senza motivo.
+      let seg = segments[0]
       for (const s of segments) {
-        if (m >= s.from && m < s.to) {
-          seg = s
-          break
-        }
+        if (m >= s.from) seg = s
+        else break
       }
       const u = (m - seg.from) / Math.max(0.001, seg.to - seg.from)
       const ball = pointAlong(seg.path, u)
