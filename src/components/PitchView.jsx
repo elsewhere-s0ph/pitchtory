@@ -35,6 +35,7 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
   const dotRefs = useRef([])
   const ringRef = useRef(null)
   const shoutRef = useRef(null)
+  const carrierRef = useRef(null)
   const anim = useRef({ dm: 0, seen: 0, until: 0, dur: 1, color: GOLD, isGoal: false, blink: null })
   const vb = useRef(FULL_VB.slice())
   const spotCache = useRef({ minute: -1, x: 52.5, y: 34 })
@@ -72,9 +73,10 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
       a.dm = Math.abs(target - a.dm) > 2.5 ? target : a.dm + (target - a.dm) * Math.min(1, dt * 3.2)
       for (const e of p.events || []) {
         if ((e.type === 'goal' || e.type === 'chance') && e.minute > a.seen && e.minute <= a.dm) {
-          a.dur = e.type === 'goal' ? 1900 : 1100
+          const isPost = e.type === 'chance' && (e.text || '').indexOf('palo') >= 0
+          a.dur = e.type === 'goal' ? 1900 : isPost ? 1500 : 1100
           a.until = now + a.dur
-          a.color = e.type === 'goal' ? GOLD : '#cbd5e1'
+          a.color = e.type === 'goal' ? GOLD : isPost ? '#f8fafc' : '#cbd5e1'
           a.isGoal = e.type === 'goal'
         }
       }
@@ -105,6 +107,22 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
           if (el) setPt(el, pt.x, pt.y)
         })
       })
+      // L’anello del possesso: pulsa sul pallino del portatore.
+      if (carrierRef.current) {
+        const c = fr.carrier
+        if (c && c.slot >= 0) {
+          const list = c.side === 'home' ? fr.home : fr.away
+          const pt = list[c.slot]
+          if (pt) {
+            setPt(carrierRef.current, pt.x, pt.y)
+            carrierRef.current.setAttribute('r', (2.5 + Math.sin(now / 240) * 0.4).toFixed(2))
+            carrierRef.current.setAttribute('opacity', '0.8')
+            carrierRef.current.setAttribute('stroke', GOLD)
+          }
+        } else {
+          carrierRef.current.setAttribute('opacity', '0')
+        }
+      }
       // Il pallino che lampeggia: cartellino giallo/rosso o marcatore oro.
       if (a.blink) {
         const el = dotRefs.current[a.blink.dot]
@@ -234,6 +252,7 @@ export default function PitchView({ director, minute, events, homeForm, awayForm
                 }}
               />
             ))}
+            <circle ref={carrierRef} cx="-5" cy="-5" r="2.5" fill="none" strokeWidth="0.7" opacity="0" />
             <circle ref={haloRef} cx="-5" cy="-5" r="2.4" fill="#f4f7f5" opacity="0.25" />
             <circle ref={ballRef} cx="-5" cy="-5" r="1.1" fill="#f4f7f5" />
             <text ref={shoutRef} fontSize="3.4" fontWeight="700" fill={GOLD} textAnchor="middle" opacity="0">

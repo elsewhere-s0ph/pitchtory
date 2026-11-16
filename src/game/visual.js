@@ -94,6 +94,39 @@ function pointAlong(path, u) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
 }
 
+function carrierFor(rng, side, x) {
+  const dir = side === 'home' ? 1 : -1
+  const xf = dir === 1 ? x / PITCH_W : 1 - x / PITCH_W
+  let role = 'MF'
+  if (xf > 0.68) role = 'FW'
+  else if (xf < 0.3) role = rng.chance(0.6) ? 'DF' : 'MF'
+  return { role, k: rng.int(0, 1) }
+}
+
+function carrierApprox(side, c, rawX, rawY) {
+  const dir = side === 'home' ? 1 : -1
+  const shift = clamp(((rawX - CX) * dir) / CX, -1, 1)
+  const range = ROLE_RANGE[c.role] || ROLE_RANGE.MF
+  const xf = clamp(ROLE_X[c.role] + shift * (ROLE_SHIFT[c.role] || 0.1), range[0], range[1])
+  return { x: dir === 1 ? xf * PITCH_W : PITCH_W - xf * PITCH_W, y: clamp(rawY, 6, PITCH_H - 6) }
+}
+
+function resolveSlot(formId, c) {
+  if (!c) return -1
+  const slots = (FORMATIONS[formId] || FORMATIONS['442']).slots
+  let n = 0
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i] === c.role) {
+      if (n === c.k) return i
+      n++
+    }
+  }
+  for (let i = slots.length - 1; i >= 0; i--) {
+    if (slots[i] === c.role) return i
+  }
+  return -1
+}
+
 /** x a N metri dalla linea di porta attaccata (negativo = dentro la rete). */
 function attackX(dir, meters) {
   return CX + dir * (CX - meters)
@@ -110,6 +143,9 @@ const CHOREO_WINDOW = {
   pen: 1.8,
   cross: 2.6,
   freekick: 2.2,
+  'chance-post': 2.4,
+  'chance-save': 2.4,
+  'chance-high': 2.4,
 }
 
 /** Che coreografia merita l'evento: il tipo lo dice il copione, il
@@ -129,6 +165,14 @@ function choreoKind(e) {
     return 'cross'
   }
   if (txt.indexOf('punizione') >= 0 || txt.indexOf('Punizione') >= 0 || txt.indexOf('barriera') >= 0) return 'freekick'
+  if (e.type === 'chance') {
+    // Le occasioni si coreografano secondo l’esito scritto in cronaca:
+    // palo, parata o tiro alto hanno ognuno il loro frame visibile.
+    if (txt.indexOf('palo') >= 0 || txt.indexOf('Palo') >= 0) return 'chance-post'
+    if (txt.indexOf('parata') >= 0 || txt.indexOf('Parata') >= 0) return 'chance-save'
+    if (txt.indexOf('alto') >= 0 || txt.indexOf('Alto') >= 0) return 'chance-high'
+    return 'chance'
+  }
   if (e.qte) return e.type === 'goal' ? 'goal-counter' : 'chance-counter'
   return e.type === 'goal' ? 'goal' : 'chance'
 }
@@ -157,6 +201,24 @@ function choreograph(rng, kind, isGoal, side, fromPt) {
     // Palla sul limite dell'area, un respiro di attesa, poi il tiro.
     const spot = at(rng.float() * 4 + 17, CY + flank * (rng.float() * 10 + 4))
     pts.push(at(rng.float() * 8 + 34, CY + rng.float() * 18 - 9), spot, spot, finale)
+    return pts
+  }
+  if (kind === 'chance-post' || kind === 'chance-save' || kind === 'chance-high' || kind === 'chance') {
+    // L’esito si vede: costruzione, tiro dall’area e il punto chiave
+    // che cade sul minuto esatto della cronaca — palo, parata o alto.
+    const shot = at(rng.float() * 9 + 5.5, CY + rng.float() * 17 - 8.5)
+    pts.push(at(rng.float() * 10 + 42, CY + rng.float() * 22 - 11))
+    pts.push(at(rng.float() * 8 + 26, CY + flank * (rng.float() * 10 + 8)))
+    pts.push(shot)
+    if (kind === 'chance-post') {
+      pts.push({ x: attackX(dir, 0.2), y: CY + (flank === 1 ? -3.5 : 3.5) })
+    } else if (kind === 'chance-save') {
+      pts.push(at(1.2, CY + rng.float() * 5 - 2.5))
+    } else if (kind === 'chance-high') {
+      pts.push({ x: attackX(dir, -1.5), y: CY + flank * (rng.float() * 2.5 + 4.2) })
+    } else {
+      pts.push(finale)
+    }
     return pts
   }
   // Il punto del tiro: dentro l'area o sul limite, sempre.
@@ -223,6 +285,7 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
   let pos = { x: CX, y: CY }
   let side = rng.chance(0.54) ? 'home' : 'away'
   let ai = 0
+  let cur = null
   // Fasi di possesso: la palla resta a una squadra per qualche tocco,
   // il cambio palla è un evento e non un dado che rulla ogni minuto.
   let phaseLeft = rng.int(2, 4)
@@ -238,18 +301,18 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
       side = e.side
       const from = Math.max(t + 0.05, m - (CHOREO_WINDOW[kind] || 3))
       if (from > t + 0.2) {
-        // Attesa: possesso preparatorio che sale verso la zona dell'azione.
         const xf = 0.42 + rng.float() * 0.3
-        const waitTarget = {
-          x: side === 'home' ? xf * PITCH_W : PITCH_W - xf * PITCH_W,
-          y: rng.float() * (PITCH_H - 20) + 10,
-        }
-        segments.push({ from: t, to: from, side, path: buildPath(rng, pos, waitTarget) })
+        const wx = side === 'home' ? xf * PITCH_W : PITCH_W - xf * PITCH_W
+        const wc = carrierFor(rng, side, wx)
+        const waitTarget = carrierApprox(side, wc, wx, rng.float() * (PITCH_H - 20) + 10)
+        segments.push({ from: t, to: from, side, mode: 'carry', carrier: wc, prev: cur, path: buildPath(rng, pos, waitTarget) })
         pos = waitTarget
+        cur = { side, carrier: wc }
       }
       const ch = choreograph(rng, kind, e.type === 'goal', side, pos)
       segments.push({ from, to: m, side, path: ch })
       pos = ch[ch.length - 1]
+      cur = null
       if (e.type === 'goal') {
         // Esultanza: la palla resta in rete, poi calcio d'inizio al
         // centro — senza mai invadere il minuto dell'evento dopo.
@@ -273,7 +336,18 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
           t = m
         }
       } else {
-        t = m
+        const next2 = appointments[ai + 1]
+        const deadTo = Math.min(95.3, m + 0.5, next2 !== undefined ? next2 - 0.8 : 95.3)
+        if (deadTo > m + 0.15) {
+          const dc = carrierFor(rng, e.side, pos.x)
+          const dTarget = carrierApprox(e.side, dc, pos.x + (e.side === 'home' ? -6 : 6), pos.y)
+          segments.push({ from: m, to: deadTo, side: e.side, mode: 'carry', carrier: dc, prev: null, path: [pos, dTarget] })
+          pos = dTarget
+          cur = { side: e.side, carrier: dc }
+          t = deadTo
+        } else {
+          t = m
+        }
       }
       ai++
       continue
@@ -287,21 +361,23 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
     const deep = fdir === 1 ? pos.x > PITCH_W - 28 : pos.x < 28
     const step = deep ? -(rng.float() * 16 + 6) : rng.float() * 18 - 3
     const lateral = rng.float() * 22 - 11
-    const target = {
-      x: clamp(pos.x + fdir * step, 8, PITCH_W - 8),
-      y: clamp(pos.y + lateral + (CY - pos.y) * 0.12, 6, PITCH_H - 6),
-    }
-    segments.push({ from: t, to, side, path: buildPath(rng, pos, target) })
-    pos = target
-    // I ponti corti verso le coreografie non toccano il possesso.
+    const rawX = clamp(pos.x + fdir * step, 8, PITCH_W - 8)
+    const rawY = clamp(pos.y + lateral + (CY - pos.y) * 0.12, 6, PITCH_H - 6)
+    let flip = false
     if (to - t >= 0.5) {
       phaseLeft -= 1
       if (phaseLeft <= 0 || rng.chance(0.15)) {
-        // Cambio palla: la nuova squadra riparte da qui, con continuità.
-        side = side === 'home' ? 'away' : 'home'
+        flip = true
         phaseLeft = rng.int(2, 4)
       }
     }
+    const newSide = flip ? (side === 'home' ? 'away' : 'home') : side
+    const nc = carrierFor(rng, newSide, rawX)
+    const target = carrierApprox(newSide, nc, rawX, rawY)
+    segments.push({ from: t, to, side: newSide, mode: 'carry', carrier: nc, prev: cur, path: buildPath(rng, pos, target) })
+    pos = target
+    cur = { side: newSide, carrier: nc }
+    side = newSide
     t = to
   }
 
@@ -326,6 +402,48 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
     })
   }
 
+  // Il transito del passaggio dura circa 7 secondi qualunque sia la
+  // durata del segmento: la palla lascia il pallino del passatore e
+  // arriva sul pallino del ricevente, poi ci resta incollata.
+  const transitEnd = (seg) => Math.min(0.55, 0.2 + 0.12 / Math.max(0.05, seg.to - seg.from))
+  const carryPoint = (seg, u, home, away, cIdx, pIdx) => {
+    const te = transitEnd(seg)
+    const list = seg.side === 'home' ? home : away
+    const prevList = seg.prev && seg.prev.side === 'home' ? home : away
+    const b = cIdx >= 0 && list[cIdx] ? list[cIdx] : null
+    const a = pIdx >= 0 && prevList[pIdx] ? prevList[pIdx] : null
+    if (u < 0.2) return a || pointAlong(seg.path, u)
+    if (u < te) {
+      const k = ease((u - 0.2) / (te - 0.2))
+      if (a && b) return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }
+      if (b) {
+        const sp = pointAlong(seg.path, 0.2)
+        return { x: sp.x + (b.x - sp.x) * k, y: sp.y + (b.y - sp.y) * k }
+      }
+    }
+    return b || pointAlong(seg.path, u)
+  }
+  // Dove si trova davvero la palla alla FINE di un segmento: per i
+  // segmenti di possesso e il pallino del portatore, per gli altri
+  // lultimo punto del percorso. Serve a saldare i confini: il primo
+  // punto del percorso successivo diventa questo, e nessun confine
+  // teletrasporta piu la palla.
+  const endBallOf = (seg, homeForm, awayForm) => {
+    let ball = pointAlong(seg.path, 1)
+    let home = teamFrame(homeForm, ball, 'home', seg.to)
+    let away = teamFrame(awayForm, ball, 'away', seg.to)
+    if (seg.mode === 'carry') {
+      const cIdx = resolveSlot(seg.side === 'home' ? homeForm : awayForm, seg.carrier)
+      for (let it = 0; it < 2; it++) {
+        const cl = seg.side === 'home' ? home : away
+        if (cIdx >= 0 && cl[cIdx]) ball = cl[cIdx]
+        home = teamFrame(homeForm, ball, 'home', seg.to)
+        away = teamFrame(awayForm, ball, 'away', seg.to)
+      }
+    }
+    return ball
+  }
+
   return {
     /** I lampeggii del regista, per il proiezionista. */
     marks: blinks,
@@ -334,18 +452,57 @@ export function makePitchDirector({ seedNumber, events, homeXI, awayXI }) {
       const m = clamp(minute, 0, 95.9)
       // L’ultimo segmento iniziato vince: nessun buco tra i segmenti,
       // la palla non salta mai da un punto all’altro senza motivo.
-      let seg = segments[0]
-      for (const s of segments) {
-        if (m >= s.from) seg = s
+      let idx = 0
+      for (let i = 0; i < segments.length; i++) {
+        if (m >= segments[i].from) idx = i
         else break
       }
+      const seg = segments[idx]
       const u = (m - seg.from) / Math.max(0.001, seg.to - seg.from)
-      const ball = pointAlong(seg.path, u)
+      // Continuità garantita: il primo punto del percorso diventa il
+      // punto in cui la palla si trova davvero alla fine del segmento
+      // precedente. Anche il confine possesso→azione è un passaggio.
+      if (idx > 0) {
+        const prevEnd = endBallOf(segments[idx - 1], homeForm, awayForm)
+        if (prevEnd) seg.path[0] = prevEnd
+      }
+      let ball = pointAlong(seg.path, u)
+      let home = teamFrame(homeForm, ball, 'home', m)
+      let away = teamFrame(awayForm, ball, 'away', m)
+      const te = transitEnd(seg)
+      if (seg.mode === 'carry') {
+        const cIdx = resolveSlot(seg.side === 'home' ? homeForm : awayForm, seg.carrier)
+        const pIdx = seg.prev && seg.prev.carrier ? resolveSlot(seg.prev.side === 'home' ? homeForm : awayForm, seg.prev.carrier) : -1
+        for (let it = 0; it < 2; it++) {
+          ball = carryPoint(seg, u, home, away, cIdx, pIdx)
+          home = teamFrame(homeForm, ball, 'home', m)
+          away = teamFrame(awayForm, ball, 'away', m)
+        }
+        if (u < 0.2 && pIdx >= 0) {
+          const pl = seg.prev.side === 'home' ? home : away
+          if (pl[pIdx]) ball = pl[pIdx]
+        } else if (u >= te && cIdx >= 0) {
+          const cl = seg.side === 'home' ? home : away
+          if (cl[cIdx]) ball = cl[cIdx]
+        }
+      }
+      const possession = seg.prev && seg.prev.side !== seg.side && u < 0.25 ? seg.prev.side : seg.side
+      let carrier = null
+      if (seg.mode === 'carry') {
+        if (u >= te) {
+          const s2 = resolveSlot(seg.side === 'home' ? homeForm : awayForm, seg.carrier)
+          if (s2 >= 0) carrier = { side: seg.side, slot: s2 }
+        } else if (u < 0.2 && seg.prev && seg.prev.carrier) {
+          const s2 = resolveSlot(seg.prev.side === 'home' ? homeForm : awayForm, seg.prev.carrier)
+          if (s2 >= 0) carrier = { side: seg.prev.side, slot: s2 }
+        }
+      }
       return {
         ball,
-        home: teamFrame(homeForm, ball, 'home', m),
-        away: teamFrame(awayForm, ball, 'away', m),
-        possession: seg.side,
+        home,
+        away,
+        possession,
+        carrier,
       }
     },
   }
