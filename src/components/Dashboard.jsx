@@ -1,7 +1,3 @@
-
-
-
-
 import { useEffect, useMemo, useState } from 'react'
 import { useCareer } from '../store'
 import { deleteCareer, exportCareer, importCareer, listCareers, saveFixtureResults, applyPostMatch, applyAiMatchday, endSeason, updateCareerSettings, upgradeScouts, setScoutFocus, settleRound, expandStadium, signSponsor, applyForJob, takeJob, declineOffer, SCOUT_UPGRADE_COST, CUP_NAME, CUP_ROUNDS, createNextCupRound, cupShootout } from '../db'
@@ -31,6 +27,59 @@ const TABS = [
   { id: 'jobs', label: 'Panchina' },
   { id: 'settings', label: 'Opzioni' },
 ]
+
+const ICON_PROPS = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+const TAB_ICONS = {
+  home: (
+    <svg {...ICON_PROPS}>
+      <path d="M4 11l8-7 8 7" />
+      <path d="M6 9.5V20h12V9.5" />
+    </svg>
+  ),
+  squad: (
+    <svg {...ICON_PROPS}>
+      <path d="M8 4l4 2 4-2 4 3-2 3-2-1v11H8V9l-2 1-2-3z" />
+    </svg>
+  ),
+  tactics: (
+    <svg {...ICON_PROPS}>
+      <rect x="6" y="5" width="12" height="16" rx="1.5" />
+      <path d="M9 5a3 3 0 016 0" />
+      <path d="M9 11h6M9 15h6" />
+    </svg>
+  ),
+  market: (
+    <svg {...ICON_PROPS}>
+      <path d="M6 8h12l-1.2 12H7.2z" />
+      <path d="M9 10V7a3 3 0 016 0v3" />
+    </svg>
+  ),
+  calendar: (
+    <svg {...ICON_PROPS}>
+      <rect x="4" y="6" width="16" height="15" rx="1.5" />
+      <path d="M4 10h16M9 3v4M15 3v4" />
+    </svg>
+  ),
+  club: (
+    <svg {...ICON_PROPS}>
+      <path d="M12 3l7 2.5V11c0 5-3.2 8.2-7 10-3.8-1.8-7-5-7-10V5.5z" />
+    </svg>
+  ),
+  jobs: (
+    <svg {...ICON_PROPS}>
+      <path d="M6 4v9h12V4" />
+      <path d="M6 13v7M18 13v7" />
+    </svg>
+  ),
+  settings: (
+    <svg {...ICON_PROPS}>
+      <path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="17" cy="17" r="2" />
+    </svg>
+  ),
+}
 
 function fmtMoney(v) {
   if (v >= 1e6) return (v / 1e6).toFixed(1).replace('.', ',') + 'M'
@@ -1042,12 +1091,14 @@ export default function Dashboard({ careerId, onNewCareer, onSwitchCareer }) {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={'scoreboard relative min-w-0 py-3 text-center text-[11px] font-semibold transition ' + (tab === t.id ? 'text-flood-400' : 'text-slate-500 hover:text-slate-300')}
+              aria-label={t.label}
+              className={'scoreboard relative flex min-w-0 flex-col items-center gap-0.5 py-2 text-center transition ' + (tab === t.id ? 'text-flood-400' : 'text-slate-500 hover:text-slate-300')}
             >
               {tab === t.id && (
                 <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-flood-400/90" />
               )}
-              <span className="block truncate px-1">{t.label}</span>
+              {TAB_ICONS[t.id]}
+              <span className="max-w-full truncate px-0.5 text-[9px] font-semibold leading-none">{tab === t.id ? t.label : ''}</span>
             </button>
           ))}
         </div>
